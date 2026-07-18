@@ -1,26 +1,52 @@
 @import "tailwindcss";
 
+/* HealthSync brand — taken from the logo artwork: blue "Health",
+   green "Sync", on a deep near-black shield. */
+@theme {
+  --color-brand-50: #eef4ff;
+  --color-brand-100: #d9e6ff;
+  --color-brand-200: #bcd3ff;
+  --color-brand-300: #8db6ff;
+  --color-brand-400: #578dff;
+  --color-brand-500: #2f66f6;
+  --color-brand-600: #1e63f0;
+  --color-brand-700: #1547c4;
+  --color-brand-800: #163c9c;
+  --color-brand-900: #17377b;
+
+  --color-sync-50: #e9fbf2;
+  --color-sync-100: #cdf5e1;
+  --color-sync-200: #9febc6;
+  --color-sync-300: #63d9a4;
+  --color-sync-400: #2fc083;
+  --color-sync-500: #00a862;
+  --color-sync-600: #009058;
+  --color-sync-700: #007447;
+
+  --color-ink-500: #6b7480;
+  --color-ink-700: #333b45;
+  --color-ink-900: #0d1117;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f5f7fa;
+  --foreground: #0d1117;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* System font stack — no external font fetch, so the app renders correctly on
+   an isolated hospital network. */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Keep keyboard focus visible throughout — clinical staff work fast and
+   frequently navigate by keyboard. */
+:focus-visible {
+  outline: 2px solid var(--color-brand-600);
+  outline-offset: 2px;
 }

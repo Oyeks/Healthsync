@@ -1,0 +1,185 @@
+// HealthSync — Enterprise Hospital Management System
+// Schema follows the spec's PostgreSQL outline. SQLite is used for local dev;
+// switching to PostgreSQL is a datasource change only (see README).
+// Note: SQLite has no native enum/JSONB. Enum-valued fields are String columns
+// constrained in application code (src/lib/enums.ts); JSONB fields are String
+// columns holding JSON. Both map directly onto Postgres enum/jsonb later.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  fullName     String
+  role         String // admin | doctor | nurse | frontdesk | billing | patient
+  specialty    String?
+  active       Boolean   @default(true)
+  // Set when role = patient, linking a portal login to its clinical record.
+  patientId    String?   @unique
+  patient      Patient?  @relation(fields: [patientId], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  appointmentsAsDoctor Appointment[]    @relation("DoctorAppointments")
+  recordsAuthored      MedicalRecord[]
+  vitalsRecorded       Vital[]
+  auditLogs            AuditLog[]
+
+  @@index([role])
+  @@map("users")
+}
+
+model Patient {
+  id        String   @id @default(uuid())
+  mrn       String   @unique // HS-YYYY-XXXXX
+  firstName String
+  lastName  String
+  dob       DateTime
+  gender    String
+  phone     String
+  email     String?
+  address   String?
+  bloodGroup String?
+  // SSN/National ID is stored masked — only the last 4 digits are retained.
+  nationalIdLast4 String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  insurance String? // JSON: { provider, policyNumber, plan, eligibility }
+  allergies String? // JSON: [{ substance, reaction, severity }]
+  status    String   @default("outpatient") // outpatient | admitted | discharged
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  portalUser   User?
+  appointments Appointment[]
+  records      MedicalRecord[]
+  vitals       Vital[]
+  admissions   Admission[]
+
+  @@index([lastName, firstName])
+  @@index([phone])
+  @@map("patients")
+}
+
+model Appointment {
+  id        String   @id @default(uuid())
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id])
+  doctorId  String
+  doctor    User     @relation("DoctorAppointments", fields: [doctorId], references: [id])
+  startTime DateTime
+  endTime   DateTime
+  status    String   @default("booked") // booked | completed | cancelled | no_show
+  type      String   @default("consultation") // consultation | follow_up | emergency
+  reason    String?
+  // Populated on cancellation/reschedule so the reason is always logged.
+  cancelReason String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  record MedicalRecord?
+
+  // Double-booking is prevented by an overlap query in the booking service;
+  // this index keeps that check fast.
+  @@index([doctorId, startTime])
+  @@index([patientId])
+  @@map("appointments")
+}
+
+model MedicalRecord {
+  id            String   @id @default(uuid())
+  patientId     String
+  patient       Patient  @relation(fields: [patientId], references: [id])
+  doctorId      String
+  doctor        User     @relation(fields: [doctorId], references: [id])
+  appointmentId String?  @unique
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  visitDate     DateTime @default(now())
+  // SOAP note — Subjective, Objective, Assessment, Plan.
+  subjective    String?
+  objective     String?
+  assessment    String?
+  plan          String?
+  diagnoses     String? // JSON: [{ code, system: "ICD-10", description }]
+  prescriptions String? // JSON: [{ drug, dose, frequency, duration }]
+  version       Int      @default(1)
+  // Digital signature: set when the clinician signs; signed notes are immutable.
+  signedAt      DateTime?
+  signedBy      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([patientId, visitDate])
+  @@map("medical_records")
+}
+
+model Vital {
+  id           String   @id @default(uuid())
+  patientId    String
+  patient      Patient  @relation(fields: [patientId], references: [id])
+  recordedById String
+  recordedBy   User     @relation(fields: [recordedById], references: [id])
+  systolic     Int?
+  diastolic    Int?
+  heartRate    Int?
+  temperature  Float?
+  spo2         Int?
+  respiratoryRate Int?
+  weightKg     Float?
+  heightCm     Float?
+  recordedAt   DateTime @default(now())
+
+  @@index([patientId, recordedAt])
+  @@map("vitals")
+}
+
+model Bed {
+  id     String @id @default(uuid())
+  code   String @unique // e.g. W1-B04
+  ward   String
+  status String @default("available") // available | occupied | maintenance
+
+  admissions Admission[]
+
+  @@map("beds")
+}
+
+model Admission {
+  id           String    @id @default(uuid())
+  patientId    String
+  patient      Patient   @relation(fields: [patientId], references: [id])
+  bedId        String
+  bed          Bed       @relation(fields: [bedId], references: [id])
+  admittedAt   DateTime  @default(now())
+  dischargedAt DateTime?
+  reason       String?
+  status       String    @default("active") // active | discharged
+
+  @@index([patientId])
+  @@map("admissions")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  actorEmail String
+  action     String // e.g. patient.create, record.sign
+  entityType String
+  entityId   String?
+  // Request metadata retained for compliance review.
+  ipAddress  String?
+  detail     String? // JSON
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
