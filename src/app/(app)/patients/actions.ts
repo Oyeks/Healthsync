@@ -8,6 +8,7 @@ import { requireSession } from "@/lib/auth";
 import { authorize } from "@/lib/rbac";
 import { audit } from "@/lib/audit";
 import { generateMrn } from "@/lib/mrn";
+import { sanitizeFormData } from "@/lib/sanitize";
 import { GENDERS } from "@/lib/enums";
 
 const patientSchema = z.object({
@@ -36,7 +37,9 @@ export async function registerPatient(
   const session = await requireSession();
   authorize(session, "patient:write");
 
-  const raw = Object.fromEntries(formData) as Record<string, string>;
+  const raw = sanitizeFormData(
+    Object.fromEntries(formData) as Record<string, string>,
+  );
   const parsed = patientSchema.safeParse(raw);
   if (!parsed.success) {
     return { error: parsed.error.issues[0].message };

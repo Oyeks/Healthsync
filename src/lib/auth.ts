@@ -13,6 +13,14 @@ const SESSION_MAX_AGE = 60 * 60 * 8; // 8 hours — one clinical shift.
 function secret() {
   const value = process.env.JWT_SECRET;
   if (!value) throw new Error("JWT_SECRET is not set");
+  if (
+    process.env.NODE_ENV === "production" &&
+    (value.length < 32 || value.includes("dev-secret"))
+  ) {
+    throw new Error(
+      "JWT_SECRET must be at least 32 characters and not contain 'dev-secret' in production",
+    );
+  }
   return new TextEncoder().encode(value);
 }
 
