@@ -26,6 +26,9 @@ async function main() {
 
   // Clear in dependency order so the seed is repeatable.
   await prisma.auditLog.deleteMany();
+  await prisma.therapySession.deleteMany();
+  await prisma.imagingOrder.deleteMany();
+  await prisma.dispensation.deleteMany();
   await prisma.vital.deleteMany();
   await prisma.medicalRecord.deleteMany();
   await prisma.appointment.deleteMany();
@@ -90,6 +93,36 @@ async function main() {
       passwordHash,
       fullName: "Ngozi Eze",
       role: "billing",
+    },
+  });
+
+  const pharmacist = await prisma.user.create({
+    data: {
+      email: "pharmacist@healthsync.io",
+      passwordHash,
+      fullName: "Olumide Bankole",
+      role: "pharmacist",
+      specialty: "Clinical Pharmacy",
+    },
+  });
+
+  const radiologist = await prisma.user.create({
+    data: {
+      email: "radiologist@healthsync.io",
+      passwordHash,
+      fullName: "Dr. Nkechi Umeh",
+      role: "radiologist",
+      specialty: "Diagnostic Radiology",
+    },
+  });
+
+  const physio = await prisma.user.create({
+    data: {
+      email: "physio@healthsync.io",
+      passwordHash,
+      fullName: "Babatunde Ajayi",
+      role: "physiotherapist",
+      specialty: "Musculoskeletal Physiotherapy",
     },
   });
 
@@ -472,6 +505,142 @@ async function main() {
     ],
   });
 
+  // ---- Dispensations (Pharmacy) ---------------------------------------------
+  await prisma.dispensation.createMany({
+    data: [
+      {
+        patientId: amina.id,
+        pharmacistId: pharmacist.id,
+        drug: "Amlodipine",
+        dose: "5 mg",
+        quantity: 28,
+        prescribedBy: drOkafor.fullName,
+        status: "dispensed",
+        notes: "28-day supply as per prescription",
+      },
+      {
+        patientId: emeka.id,
+        pharmacistId: pharmacist.id,
+        drug: "Furosemide",
+        dose: "40 mg",
+        quantity: 10,
+        prescribedBy: drBello.fullName,
+        status: "dispensed",
+        notes: "IV formulation for inpatient use",
+      },
+      {
+        patientId: emeka.id,
+        pharmacistId: pharmacist.id,
+        drug: "Lisinopril",
+        dose: "2.5 mg",
+        quantity: 30,
+        prescribedBy: drBello.fullName,
+        status: "dispensed",
+      },
+    ],
+  });
+
+  // ---- Imaging Orders (Radiology) ------------------------------------------
+  await prisma.imagingOrder.create({
+    data: {
+      patientId: emeka.id,
+      requestedById: drBello.id,
+      radiologistId: radiologist.id,
+      modality: "xray",
+      bodyPart: "Chest PA and lateral",
+      clinicalInfo: "Heart failure — assess cardiomegaly and pulmonary oedema",
+      priority: "urgent",
+      status: "completed",
+      findings:
+        "Cardiomegaly with cardiothoracic ratio of 0.62. Bilateral upper lobe pulmonary venous distension. Small bilateral pleural effusions. No consolidation.",
+      impression: "Findings consistent with congestive cardiac failure.",
+      completedAt: at(-2, 16, 30),
+    },
+  });
+
+  await prisma.imagingOrder.create({
+    data: {
+      patientId: zainab.id,
+      requestedById: drOkafor.id,
+      modality: "ultrasound",
+      bodyPart: "Abdomen and pelvis",
+      clinicalInfo: "Lower abdominal pain — rule out appendicitis, ovarian pathology",
+      priority: "routine",
+      status: "requested",
+    },
+  });
+
+  await prisma.imagingOrder.create({
+    data: {
+      patientId: amina.id,
+      requestedById: drOkafor.id,
+      radiologistId: radiologist.id,
+      modality: "ct",
+      bodyPart: "Brain non-contrast",
+      clinicalInfo: "New hypertension with persistent headache — exclude secondary causes",
+      priority: "routine",
+      status: "completed",
+      findings:
+        "No intracranial haemorrhage, mass lesion or midline shift. Ventricles and sulci are normal for age. No evidence of cerebral oedema.",
+      impression: "Normal CT brain. No acute intracranial pathology.",
+      completedAt: at(-5, 11, 0),
+    },
+  });
+
+  // ---- Therapy Sessions (Physiotherapy) ------------------------------------
+  await prisma.therapySession.create({
+    data: {
+      patientId: emeka.id,
+      therapistId: physio.id,
+      sessionType: "initial_assessment",
+      diagnosis: "Deconditioning secondary to prolonged ICU admission for heart failure",
+      treatmentPlan:
+        "Graded mobility programme: bed mobility → sitting balance → standing → walking. Respiratory physiotherapy. Goal: independent ward mobility within 5 days.",
+      notes:
+        "Patient cooperative but easily fatigued. SpO2 drops to 90% on exertion. Sitting balance fair. Unable to stand unassisted currently.",
+      painLevelBefore: 3,
+      painLevelAfter: 2,
+      exercisesGiven: JSON.stringify([
+        { name: "Ankle pumps", details: "3x10 bilateral, hourly while awake" },
+        { name: "Seated marching", details: "2x10, with rest breaks" },
+        { name: "Deep breathing exercises", details: "5 cycles, 3x daily" },
+      ]),
+      nextSessionDate: at(1, 10, 0),
+      status: "completed",
+    },
+  });
+
+  await prisma.therapySession.create({
+    data: {
+      patientId: emeka.id,
+      therapistId: physio.id,
+      sessionType: "treatment",
+      diagnosis: "Deconditioning secondary to prolonged ICU admission for heart failure",
+      treatmentPlan: "Progress to standing and supported walking if haemodynamically stable",
+      nextSessionDate: at(2, 10, 0),
+      status: "scheduled",
+    },
+  });
+
+  await prisma.therapySession.create({
+    data: {
+      patientId: tobi.id,
+      therapistId: physio.id,
+      sessionType: "follow_up",
+      diagnosis: "Developmental coordination delay — gross motor skills",
+      treatmentPlan: "Balance and coordination exercises, ball skills, playground activities",
+      notes: "Good progress. Able to hop on one foot for 5 seconds (was 0 at initial). Continue home programme.",
+      painLevelBefore: 0,
+      painLevelAfter: 0,
+      exercisesGiven: JSON.stringify([
+        { name: "Single leg stand", details: "3x30s each side" },
+        { name: "Tandem walking", details: "10m x 3" },
+        { name: "Ball catch and throw", details: "5 minutes" },
+      ]),
+      status: "completed",
+    },
+  });
+
   // ---- Seed audit trail ----------------------------------------------------
   await prisma.auditLog.create({
     data: {
@@ -483,7 +652,7 @@ async function main() {
     },
   });
 
-  console.log(`Seeded: 7 users, 4 patients, ${beds.length} beds, 5 appointments.`);
+  console.log(`Seeded: 10 users, 4 patients, ${beds.length} beds, 5 appointments, 3 dispensations, 3 imaging orders, 3 therapy sessions.`);
   console.log(`All accounts use password: ${PASSWORD}`);
 }
 

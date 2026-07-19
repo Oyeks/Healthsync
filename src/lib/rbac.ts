@@ -2,7 +2,6 @@ import type { Role } from "./enums";
 import type { SessionUser } from "./auth";
 import { AuthError } from "./errors";
 
-// Granular permissions per the spec: "Doctor can prescribe, Nurse cannot."
 export const PERMISSIONS = [
   "patient:read",
   "patient:write",
@@ -17,6 +16,13 @@ export const PERMISSIONS = [
   "staff:manage",
   "audit:read",
   "dashboard:view",
+  "pharmacy:read",
+  "pharmacy:dispense",
+  "imaging:read",
+  "imaging:write",
+  "imaging:report",
+  "therapy:read",
+  "therapy:write",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -31,6 +37,9 @@ const MATRIX: Record<Role, Permission[]> = {
     "staff:manage",
     "audit:read",
     "dashboard:view",
+    "pharmacy:read",
+    "imaging:read",
+    "therapy:read",
   ],
   doctor: [
     "patient:read",
@@ -44,6 +53,9 @@ const MATRIX: Record<Role, Permission[]> = {
     "vitals:write",
     "admission:write",
     "dashboard:view",
+    "imaging:read",
+    "imaging:write",
+    "therapy:read",
   ],
   nurse: [
     "patient:read",
@@ -51,6 +63,28 @@ const MATRIX: Record<Role, Permission[]> = {
     "record:read",
     "vitals:write",
     "admission:write",
+    "dashboard:view",
+  ],
+  pharmacist: [
+    "patient:read",
+    "appointment:read",
+    "record:read",
+    "pharmacy:read",
+    "pharmacy:dispense",
+    "dashboard:view",
+  ],
+  radiologist: [
+    "patient:read",
+    "record:read",
+    "imaging:read",
+    "imaging:report",
+    "dashboard:view",
+  ],
+  physiotherapist: [
+    "patient:read",
+    "record:read",
+    "therapy:read",
+    "therapy:write",
     "dashboard:view",
   ],
   frontdesk: [
@@ -62,8 +96,6 @@ const MATRIX: Record<Role, Permission[]> = {
     "dashboard:view",
   ],
   billing: ["patient:read", "appointment:read", "dashboard:view"],
-  // Patients reach their own data through the portal routes, which scope every
-  // query by session.patientId rather than granting a broad read permission.
   patient: [],
 };
 
@@ -75,7 +107,6 @@ export function permissionsFor(role: Role): Permission[] {
   return MATRIX[role] ?? [];
 }
 
-/** Throws 403 unless the session holds the permission. */
 export function authorize(session: SessionUser, permission: Permission) {
   if (!can(session.role, permission)) {
     throw new AuthError(

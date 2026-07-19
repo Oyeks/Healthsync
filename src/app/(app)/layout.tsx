@@ -15,6 +15,13 @@ const NAV = [
     label: "Appointments",
     permission: "appointment:read",
   },
+  { href: "/pharmacy", label: "Pharmacy", permission: "pharmacy:read" },
+  { href: "/radiology", label: "Radiology", permission: "imaging:read" },
+  {
+    href: "/physiotherapy",
+    label: "Physiotherapy",
+    permission: "therapy:read",
+  },
   { href: "/wards", label: "Wards & Beds", permission: "admission:write" },
   { href: "/staff", label: "Staff", permission: "staff:manage" },
   { href: "/audit", label: "Audit Log", permission: "audit:read" },

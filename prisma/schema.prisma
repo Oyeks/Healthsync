@@ -18,7 +18,7 @@ model User {
   email        String    @unique
   passwordHash String
   fullName     String
-  role         String // admin | doctor | nurse | frontdesk | billing | patient
+  role         String // admin | doctor | nurse | pharmacist | radiologist | physiotherapist | frontdesk | billing | patient
   specialty    String?
   active       Boolean   @default(true)
   // Set when role = patient, linking a portal login to its clinical record.
@@ -27,10 +27,14 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  appointmentsAsDoctor Appointment[]    @relation("DoctorAppointments")
+  appointmentsAsDoctor Appointment[]     @relation("DoctorAppointments")
   recordsAuthored      MedicalRecord[]
   vitalsRecorded       Vital[]
   auditLogs            AuditLog[]
+  dispensations        Dispensation[]
+  imagingOrders        ImagingOrder[]   @relation("RadiologistOrders")
+  imagingRequests      ImagingOrder[]   @relation("RequestingDoctor")
+  therapySessions      TherapySession[]
 
   @@index([role])
   @@map("users")
@@ -57,11 +61,14 @@ model Patient {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  portalUser   User?
-  appointments Appointment[]
-  records      MedicalRecord[]
-  vitals       Vital[]
-  admissions   Admission[]
+  portalUser      User?
+  appointments    Appointment[]
+  records         MedicalRecord[]
+  vitals          Vital[]
+  admissions      Admission[]
+  dispensations   Dispensation[]
+  imagingOrders   ImagingOrder[]
+  therapySessions TherapySession[]
 
   @@index([lastName, firstName])
   @@index([phone])
@@ -164,6 +171,74 @@ model Admission {
 
   @@index([patientId])
   @@map("admissions")
+}
+
+model Dispensation {
+  id           String   @id @default(uuid())
+  patientId    String
+  patient      Patient  @relation(fields: [patientId], references: [id])
+  pharmacistId String
+  pharmacist   User     @relation(fields: [pharmacistId], references: [id])
+  drug         String
+  dose         String
+  quantity     Int
+  status       String   @default("pending") // pending | dispensed | rejected
+  rejectReason String?
+  notes        String?
+  prescribedBy String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([status])
+  @@map("dispensations")
+}
+
+model ImagingOrder {
+  id            String    @id @default(uuid())
+  patientId     String
+  patient       Patient   @relation(fields: [patientId], references: [id])
+  requestedById String
+  requestedBy   User      @relation("RequestingDoctor", fields: [requestedById], references: [id])
+  radiologistId String?
+  radiologist   User?     @relation("RadiologistOrders", fields: [radiologistId], references: [id])
+  modality      String    // xray | ct | mri | ultrasound
+  bodyPart      String
+  clinicalInfo  String?
+  priority      String    @default("routine") // routine | urgent | stat
+  status        String    @default("requested") // requested | in_progress | completed | cancelled
+  findings      String?
+  impression    String?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([patientId])
+  @@index([status])
+  @@map("imaging_orders")
+}
+
+model TherapySession {
+  id              String   @id @default(uuid())
+  patientId       String
+  patient         Patient  @relation(fields: [patientId], references: [id])
+  therapistId     String
+  therapist       User     @relation(fields: [therapistId], references: [id])
+  sessionType     String   // initial_assessment | treatment | follow_up | discharge
+  diagnosis       String?
+  treatmentPlan   String?
+  notes           String?
+  painLevelBefore Int?
+  painLevelAfter  Int?
+  exercisesGiven  String?  // JSON: [{ name, sets, reps, notes }]
+  nextSessionDate DateTime?
+  status          String   @default("scheduled") // scheduled | completed | cancelled | no_show
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([therapistId])
+  @@map("therapy_sessions")
 }
 
 model AuditLog {

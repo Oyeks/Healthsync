@@ -6,6 +6,9 @@ export const ROLES = [
   "admin",
   "doctor",
   "nurse",
+  "pharmacist",
+  "radiologist",
+  "physiotherapist",
   "frontdesk",
   "billing",
   "patient",
@@ -16,6 +19,9 @@ export const ROLE_LABELS: Record<Role, string> = {
   admin: "Administrator",
   doctor: "Doctor",
   nurse: "Nurse",
+  pharmacist: "Pharmacist",
+  radiologist: "Radiologist",
+  physiotherapist: "Physiotherapist",
   frontdesk: "Front Desk",
   billing: "Billing Officer",
   patient: "Patient",
@@ -44,3 +50,31 @@ export const PATIENT_STATUSES = [
 export const BED_STATUSES = ["available", "occupied", "maintenance"] as const;
 
 export const GENDERS = ["male", "female", "other"] as const;
+
+export const IMAGING_MODALITIES = [
+  "xray",
+  "ct",
+  "mri",
+  "ultrasound",
+] as const;
+
+export const IMAGING_MODALITY_LABELS: Record<string, string> = {
+  xray: "X-Ray",
+  ct: "CT Scan",
+  mri: "MRI",
+  ultrasound: "Ultrasound",
+};
+
+export const THERAPY_SESSION_TYPES = [
+  "initial_assessment",
+  "treatment",
+  "follow_up",
+  "discharge",
+] as const;
+
+export const THERAPY_SESSION_TYPE_LABELS: Record<string, string> = {
+  initial_assessment: "Initial Assessment",
+  treatment: "Treatment",
+  follow_up: "Follow-up",
+  discharge: "Discharge",
+};
