@@ -6,7 +6,111 @@ import Link from "next/link";
 import { createEncounter, type EncounterState } from "./actions";
 import { Button, Card, CardHeader, ErrorBanner } from "@/components/ui";
 import { screenPrescriptions } from "@/lib/services/cds";
+import {
+  screenDoseAdjustments,
+  type PatientClinicalContext,
+} from "@/lib/services/dosing";
+import {
+  assessSymptoms,
+  COMMON_SYMPTOMS,
+  highestUrgency,
+  type Urgency,
+} from "@/lib/services/triage";
 import type { Prescription } from "@/lib/format";
+
+const URGENCY_STYLE: Record<Urgency, string> = {
+  emergency: "border-red-300 bg-red-50 text-red-800",
+  urgent: "border-amber-300 bg-amber-50 text-amber-800",
+  routine: "border-brand-200 bg-brand-50 text-brand-700",
+};
+
+function SymptomAssessment({
+  patientSex,
+  patientPregnant,
+}: {
+  patientSex: string;
+  patientPregnant: boolean;
+}) {
+  const [selected, setSelected] = useState<string[]>([]);
+
+  const matches = useMemo(
+    () =>
+      assessSymptoms(selected, { sex: patientSex, pregnant: patientPregnant }),
+    [selected, patientSex, patientPregnant],
+  );
+  const urgency = highestUrgency(matches);
+
+  function toggle(symptom: string) {
+    setSelected((prev) =>
+      prev.includes(symptom)
+        ? prev.filter((s) => s !== symptom)
+        : [...prev, symptom],
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        title="Symptom assessment"
+        subtitle="Decision support only — suggestions, not a diagnosis. Selections here are not saved to the record."
+      />
+      <div className="space-y-4 p-5">
+        <div className="flex flex-wrap gap-2">
+          {COMMON_SYMPTOMS.map((symptom) => {
+            const active = selected.includes(symptom);
+            return (
+              <button
+                key={symptom}
+                type="button"
+                onClick={() => toggle(symptom)}
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  active
+                    ? "border-brand-600 bg-brand-600 text-white"
+                    : "border-slate-300 text-ink-700 hover:bg-slate-50"
+                }`}
+              >
+                {symptom}
+              </button>
+            );
+          })}
+        </div>
+
+        {matches.length > 0 && (
+          <div className="space-y-3">
+            {urgency && (
+              <div
+                className={`rounded-lg border px-3 py-2 text-xs font-bold uppercase tracking-wide ${URGENCY_STYLE[urgency]}`}
+              >
+                Urgency: {urgency}
+              </div>
+            )}
+            {matches.map((match, i) => (
+              <div key={i} className="rounded-lg border border-slate-200 p-3">
+                <p className="text-sm font-semibold text-ink-900">
+                  Possible conditions
+                </p>
+                <p className="mt-0.5 text-sm text-ink-700">
+                  {match.conditions.join(", ")}
+                </p>
+                <p className="mt-2 text-sm font-semibold text-ink-900">
+                  Suggested investigations
+                </p>
+                <p className="mt-0.5 text-sm text-ink-700">
+                  {match.investigations.join(", ")}
+                </p>
+                {match.note && (
+                  <p className="mt-2 text-sm font-medium text-amber-700">
+                    {match.note}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
 
 function parseLines(input: string): Prescription[] {
   return input
@@ -74,13 +178,17 @@ function Submit({ label }: { label: string }) {
 export function EncounterForm({
   patientId,
   patientName,
+  patientSex,
   allergiesJson,
   canPrescribe,
+  clinicalContext,
 }: {
   patientId: string;
   patientName: string;
+  patientSex: string;
   allergiesJson: string | null;
   canPrescribe: boolean;
+  clinicalContext: PatientClinicalContext;
 }) {
   const [state, formAction] = useActionState<EncounterState, FormData>(
     createEncounter,
@@ -90,10 +198,13 @@ export function EncounterForm({
   const [sign, setSign] = useState(true);
 
   // Live safety screening as the clinician types.
-  const alerts = useMemo(
-    () => screenPrescriptions(parseLines(prescriptionText), allergiesJson),
-    [prescriptionText, allergiesJson],
-  );
+  const alerts = useMemo(() => {
+    const lines = parseLines(prescriptionText);
+    return [
+      ...screenPrescriptions(lines, allergiesJson),
+      ...screenDoseAdjustments(lines, clinicalContext),
+    ];
+  }, [prescriptionText, allergiesJson, clinicalContext]);
   const hasCritical = alerts.some((a) => a.severity === "critical");
 
   return (
@@ -102,6 +213,11 @@ export function EncounterForm({
       <input type="hidden" name="sign" value={sign ? "yes" : "no"} />
 
       <ErrorBanner message={state.error} />
+
+      <SymptomAssessment
+        patientSex={patientSex}
+        patientPregnant={clinicalContext.pregnant}
+      />
 
       <Card>
         <CardHeader

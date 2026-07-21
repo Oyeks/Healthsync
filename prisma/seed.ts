@@ -26,6 +26,7 @@ async function main() {
 
   // Clear in dependency order so the seed is repeatable.
   await prisma.auditLog.deleteMany();
+  await prisma.labResult.deleteMany();
   await prisma.therapySession.deleteMany();
   await prisma.imagingOrder.deleteMany();
   await prisma.dispensation.deleteMany();
@@ -207,6 +208,9 @@ async function main() {
       }),
       allergies: JSON.stringify([]),
       status: "admitted",
+      // Drives the medication dose-adjustment warning for renally-cleared
+      // drugs (e.g. gentamicin, digoxin) in the encounter form.
+      egfr: 42,
     },
   });
 
@@ -237,6 +241,10 @@ async function main() {
         },
       ]),
       status: "outpatient",
+      // Drives the pregnancy-related dose-adjustment warnings (NSAIDs,
+      // ACE inhibitors) and the ectopic-pregnancy differential in the
+      // symptom assessment tool for her abdominal pain presentation.
+      pregnant: true,
     },
   });
 
@@ -474,6 +482,7 @@ async function main() {
         respiratoryRate: 24,
         weightKg: 81.2,
         heightCm: 172,
+        onOxygen: true,
         recordedAt: at(-2, 14, 30),
       },
       {
@@ -487,6 +496,7 @@ async function main() {
         respiratoryRate: 20,
         weightKg: 79.4,
         heightCm: 172,
+        onOxygen: true,
         recordedAt: at(0, 7, 30),
       },
       {
@@ -503,6 +513,63 @@ async function main() {
         recordedAt: at(0, 13, 45),
       },
     ],
+  });
+
+  // ---- Lab Results (Laboratory) --------------------------------------------
+  // Interpretation summaries are computed the same way the live app does —
+  // see src/lib/services/labs.ts — so these mirror what a real order would show.
+  await prisma.labResult.create({
+    data: {
+      patientId: emeka.id,
+      orderedById: drBello.id,
+      panel: "Urea & Electrolytes",
+      results: JSON.stringify([
+        { name: "Sodium", value: 138, unit: "mmol/L", refLow: 135, refHigh: 145, flag: "normal" },
+        { name: "Potassium", value: 5.3, unit: "mmol/L", refLow: 3.5, refHigh: 5.1, flag: "high" },
+        { name: "Urea", value: 9.8, unit: "mmol/L", refLow: 2.5, refHigh: 7.8, flag: "high" },
+        { name: "Creatinine", value: 165, unit: "µmol/L", refLow: 60, refHigh: 110, flag: "high" },
+        { name: "eGFR", value: 42, unit: "mL/min/1.73m²", refLow: 90, refHigh: 999, flag: "low" },
+      ]),
+      summary:
+        "Moderate renal impairment — review nephrotoxic and renally-cleared drug doses. Hyperkalaemia.",
+      status: "reviewed",
+      createdAt: at(-2, 15, 30),
+    },
+  });
+
+  await prisma.labResult.create({
+    data: {
+      patientId: amina.id,
+      orderedById: drOkafor.id,
+      panel: "Lipid Profile",
+      results: JSON.stringify([
+        { name: "Total Cholesterol", value: 6.1, unit: "mmol/L", refLow: 0, refHigh: 5.2, flag: "high" },
+        { name: "LDL", value: 4.0, unit: "mmol/L", refLow: 0, refHigh: 3.4, flag: "high" },
+        { name: "HDL", value: 1.1, unit: "mmol/L", refLow: 1.0, refHigh: 999, flag: "normal" },
+        { name: "Triglycerides", value: 1.5, unit: "mmol/L", refLow: 0, refHigh: 1.7, flag: "normal" },
+      ]),
+      summary: "Elevated LDL — cardiovascular risk factor.",
+      status: "reviewed",
+      createdAt: at(-6, 9, 0),
+    },
+  });
+
+  await prisma.labResult.create({
+    data: {
+      patientId: amina.id,
+      orderedById: drOkafor.id,
+      panel: "Urea & Electrolytes",
+      results: JSON.stringify([
+        { name: "Sodium", value: 140, unit: "mmol/L", refLow: 135, refHigh: 145, flag: "normal" },
+        { name: "Potassium", value: 4.1, unit: "mmol/L", refLow: 3.5, refHigh: 5.1, flag: "normal" },
+        { name: "Urea", value: 5.2, unit: "mmol/L", refLow: 2.5, refHigh: 7.8, flag: "normal" },
+        { name: "Creatinine", value: 78, unit: "µmol/L", refLow: 60, refHigh: 110, flag: "normal" },
+        { name: "eGFR", value: 95, unit: "mL/min/1.73m²", refLow: 90, refHigh: 999, flag: "normal" },
+      ]),
+      summary: "All values within reference range.",
+      status: "reviewed",
+      createdAt: at(-6, 9, 0),
+    },
   });
 
   // ---- Dispensations (Pharmacy) ---------------------------------------------
@@ -652,7 +719,7 @@ async function main() {
     },
   });
 
-  console.log(`Seeded: 10 users, 4 patients, ${beds.length} beds, 5 appointments, 3 dispensations, 3 imaging orders, 3 therapy sessions.`);
+  console.log(`Seeded: 10 users, 4 patients, ${beds.length} beds, 5 appointments, 3 dispensations, 3 imaging orders, 3 therapy sessions, 3 lab results.`);
   console.log(`All accounts use password: ${PASSWORD}`);
 }
 

@@ -79,7 +79,7 @@ export function PatientForm() {
 
       <Card>
         <CardHeader
-          title="Insurance & clinical flags"
+          title="Insurance"
           subtitle="Eligibility is verified against the payer after registration"
         />
         <div className="grid gap-4 p-5 sm:grid-cols-2">
@@ -97,6 +97,37 @@ export function PatientForm() {
               placeholder={"penicillin\nsulfa"}
               hint="One per line. These drive prescribing alerts."
             />
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Clinical flags"
+          subtitle="Feed the medication dose-adjustment safety checks — leave blank if unknown"
+        />
+        <div className="grid gap-4 p-5 sm:grid-cols-2">
+          <Field
+            label="eGFR (mL/min/1.73m²)"
+            name="egfr"
+            type="number"
+            placeholder="e.g. 90"
+            hint="Estimated renal function, if known"
+          />
+          <div className="flex flex-col justify-center gap-3">
+            <label className="flex items-center gap-2 text-sm text-ink-700">
+              <input
+                type="checkbox"
+                name="hepaticImpairment"
+                value="yes"
+                className="h-4 w-4"
+              />
+              Known hepatic impairment
+            </label>
+            <label className="flex items-center gap-2 text-sm text-ink-700">
+              <input type="checkbox" name="pregnant" value="yes" className="h-4 w-4" />
+              Currently pregnant
+            </label>
           </div>
         </div>
       </Card>

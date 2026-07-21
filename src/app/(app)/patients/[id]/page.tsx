@@ -23,7 +23,15 @@ import {
   type Insurance,
   type Prescription,
 } from "@/lib/format";
+import { computeNews2 } from "@/lib/services/news2";
+import type { LabAnalyte } from "@/lib/services/labs";
 import { VitalsForm } from "./vitals-form";
+
+const NEWS2_TONE = {
+  low: "green" as const,
+  medium: "amber" as const,
+  high: "red" as const,
+};
 
 export default async function PatientPage({
   params,
@@ -55,6 +63,10 @@ export default async function PatientPage({
         where: { status: "active" },
         include: { bed: true },
       },
+      labResults: {
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      },
     },
   });
 
@@ -64,6 +76,17 @@ export default async function PatientPage({
   const insurance = parseJson<Insurance | null>(patient.insurance, null);
   const latestVitals = patient.vitals[0];
   const activeAdmission = patient.admissions[0];
+  const news2 = latestVitals
+    ? computeNews2({
+        respiratoryRate: latestVitals.respiratoryRate,
+        spo2: latestVitals.spo2,
+        onOxygen: latestVitals.onOxygen,
+        systolic: latestVitals.systolic,
+        heartRate: latestVitals.heartRate,
+        consciousness: latestVitals.consciousness,
+        temperature: latestVitals.temperature,
+      })
+    : null;
 
   return (
     <>
@@ -171,6 +194,40 @@ export default async function PatientPage({
             </div>
           </Card>
 
+          {(patient.egfr != null ||
+            patient.hepaticImpairment ||
+            patient.pregnant) && (
+            <Card>
+              <CardHeader
+                title="Clinical flags"
+                subtitle="Feeds medication dose-adjustment checks"
+              />
+              <dl className="space-y-3 p-5 text-sm">
+                {patient.egfr != null && (
+                  <div>
+                    <dt className="text-xs text-ink-500">eGFR</dt>
+                    <dd className="mt-0.5 flex items-center gap-2 text-ink-900">
+                      {patient.egfr} mL/min/1.73m²
+                      {patient.egfr < 60 && (
+                        <Badge tone="amber">Renal impairment</Badge>
+                      )}
+                    </dd>
+                  </div>
+                )}
+                {patient.hepaticImpairment && (
+                  <div>
+                    <Badge tone="amber">Hepatic impairment</Badge>
+                  </div>
+                )}
+                {patient.pregnant && (
+                  <div>
+                    <Badge tone="blue">Pregnant</Badge>
+                  </div>
+                )}
+              </dl>
+            </Card>
+          )}
+
           {activeAdmission && (
             <Card>
               <CardHeader title="Current admission" />
@@ -199,7 +256,25 @@ export default async function PatientPage({
                   ? `Recorded ${formatDateTime(latestVitals.recordedAt)} by ${latestVitals.recordedBy.fullName}`
                   : undefined
               }
+              action={
+                news2 && news2.scored ? (
+                  <Badge tone={NEWS2_TONE[news2.risk]}>
+                    NEWS2 {news2.score} · {news2.risk}
+                  </Badge>
+                ) : undefined
+              }
             />
+            {news2 && news2.scored && news2.risk !== "low" && (
+              <div
+                className={`mx-5 mt-4 rounded-lg border px-3 py-2 text-sm ${
+                  news2.risk === "high"
+                    ? "border-red-300 bg-red-50 text-red-800"
+                    : "border-amber-300 bg-amber-50 text-amber-800"
+                }`}
+              >
+                {news2.recommendation}
+              </div>
+            )}
             {latestVitals ? (
               <dl className="grid grid-cols-2 gap-4 p-5 sm:grid-cols-3 lg:grid-cols-6">
                 {[
@@ -237,6 +312,61 @@ export default async function PatientPage({
               </div>
             )}
           </Card>
+
+          {can(session.role, "lab:read") && (
+            <Card>
+              <CardHeader
+                title="Recent lab results"
+                subtitle={`${patient.labResults.length} record${patient.labResults.length === 1 ? "" : "s"}`}
+              />
+              {patient.labResults.length === 0 ? (
+                <EmptyState message="No lab results recorded yet." />
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {patient.labResults.map((result) => {
+                    const analytes = parseJson<LabAnalyte[]>(
+                      result.results,
+                      [],
+                    );
+                    return (
+                      <li key={result.id} className="p-5">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-ink-900">
+                            {result.panel}
+                          </p>
+                          <span className="text-xs text-ink-500">
+                            {formatDateTime(result.createdAt)}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {analytes.map((a) => (
+                            <span
+                              key={a.name}
+                              className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs"
+                            >
+                              {a.name}: {a.value} {a.unit}
+                              {a.flag !== "normal" && (
+                                <Badge
+                                  tone={a.flag === "critical" ? "red" : "amber"}
+                                >
+                                  {a.flag}
+                                </Badge>
+                              )}
+                            </span>
+                          ))}
+                        </div>
+                        {result.summary && (
+                          <p className="mt-2 text-sm text-ink-700">
+                            {result.summary}
+                          </p>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </Card>
+          )}
 
           <Card>
             <CardHeader

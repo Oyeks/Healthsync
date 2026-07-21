@@ -53,7 +53,28 @@ export function VitalsForm({ patientId }: { patientId: string }) {
             />
           </label>
         ))}
+        <label className="block">
+          <span className="text-xs text-ink-500">Consciousness</span>
+          <select
+            name="consciousness"
+            defaultValue="alert"
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm focus:border-brand-500"
+          >
+            <option value="alert">Alert</option>
+            <option value="voice">Responds to voice</option>
+            <option value="pain">Responds to pain</option>
+            <option value="unresponsive">Unresponsive</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-2 pt-5">
+          <input type="checkbox" name="onOxygen" value="yes" className="h-4 w-4" />
+          <span className="text-xs text-ink-700">On supplemental oxygen</span>
+        </label>
       </div>
+      <p className="text-xs text-ink-500">
+        Consciousness and oxygen status feed the NEWS2 early warning score
+        shown above once saved.
+      </p>
       <Submit />
     </form>
   );

@@ -8,6 +8,8 @@ import { requireSession } from "@/lib/auth";
 import { authorize, can } from "@/lib/rbac";
 import { audit } from "@/lib/audit";
 import { screenPrescriptions } from "@/lib/services/cds";
+import { screenDoseAdjustments } from "@/lib/services/dosing";
+import { age } from "@/lib/format";
 import type { Prescription } from "@/lib/format";
 
 const encounterSchema = z.object({
@@ -74,7 +76,14 @@ export async function createEncounter(
 
   const patient = await prisma.patient.findUnique({
     where: { id: data.patientId },
-    select: { id: true, allergies: true },
+    select: {
+      id: true,
+      allergies: true,
+      dob: true,
+      egfr: true,
+      hepaticImpairment: true,
+      pregnant: true,
+    },
   });
   if (!patient) return { error: "Patient not found" };
 
@@ -89,7 +98,15 @@ export async function createEncounter(
 
   // Server-side safety screen. The client shows these alerts live, but the
   // check is re-run here so a crafted POST cannot bypass it.
-  const alerts = screenPrescriptions(prescriptions, patient.allergies);
+  const alerts = [
+    ...screenPrescriptions(prescriptions, patient.allergies),
+    ...screenDoseAdjustments(prescriptions, {
+      ageYears: age(patient.dob),
+      egfr: patient.egfr,
+      hepaticImpairment: patient.hepaticImpairment,
+      pregnant: patient.pregnant,
+    }),
+  ];
   const critical = alerts.filter((a) => a.severity === "critical");
   if (critical.length > 0 && data.overrideAcknowledged !== "yes") {
     return {

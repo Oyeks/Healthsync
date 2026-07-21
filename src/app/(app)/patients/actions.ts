@@ -26,6 +26,9 @@ const patientSchema = z.object({
   insuranceProvider: z.string(),
   insurancePolicyNumber: z.string(),
   allergies: z.string(),
+  egfr: z.string(),
+  hepaticImpairment: z.string().optional(),
+  pregnant: z.string().optional(),
 });
 
 export type PatientFormState = { error?: string };
@@ -49,6 +52,11 @@ export async function registerPatient(
   const dob = new Date(data.dob);
   if (Number.isNaN(dob.getTime()) || dob > new Date()) {
     return { error: "Date of birth must be a valid past date" };
+  }
+
+  const egfrValue = data.egfr ? Number(data.egfr) : null;
+  if (egfrValue != null && (Number.isNaN(egfrValue) || egfrValue < 0)) {
+    return { error: "eGFR must be a valid number" };
   }
 
   // Free-text allergies are split one-per-line into structured entries.
@@ -89,6 +97,9 @@ export async function registerPatient(
           })
         : null,
       allergies: JSON.stringify(allergies),
+      egfr: egfrValue,
+      hepaticImpairment: data.hepaticImpairment === "yes",
+      pregnant: data.pregnant === "yes",
     },
   });
 
@@ -106,6 +117,10 @@ const vitalsSchema = z.object({
   temperature: z.coerce.number().min(30).max(45).optional(),
   spo2: z.coerce.number().int().min(50).max(100).optional(),
   respiratoryRate: z.coerce.number().int().min(4).max(80).optional(),
+  consciousness: z
+    .enum(["alert", "voice", "pain", "unresponsive"])
+    .default("alert"),
+  onOxygen: z.string().optional(),
 });
 
 export async function recordVitals(
@@ -116,23 +131,33 @@ export async function recordVitals(
   authorize(session, "vitals:write");
 
   const raw = Object.fromEntries(formData) as Record<string, string>;
-  // Blank inputs are omitted rather than coerced to 0.
+  // Blank inputs are omitted rather than coerced to 0. Consciousness always
+  // carries a value (its <select> defaults to "alert"), so it's excluded
+  // from the blank-stripping pass below.
   const cleaned = Object.fromEntries(
-    Object.entries(raw).filter(([, v]) => v !== ""),
+    Object.entries(raw).filter(
+      ([key, v]) => v !== "" || key === "consciousness",
+    ),
   );
 
   const parsed = vitalsSchema.safeParse(cleaned);
   if (!parsed.success) {
     return { error: `Invalid reading: ${parsed.error.issues[0].message}` };
   }
-  const { patientId, ...readings } = parsed.data;
+  const { patientId, consciousness, onOxygen, ...readings } = parsed.data;
 
   if (Object.values(readings).every((v) => v === undefined)) {
     return { error: "Enter at least one reading" };
   }
 
   const vital = await prisma.vital.create({
-    data: { patientId, recordedById: session.id, ...readings },
+    data: {
+      patientId,
+      recordedById: session.id,
+      consciousness,
+      onOxygen: onOxygen === "yes",
+      ...readings,
+    },
   });
 
   await audit(session, "vitals.create", "vital", vital.id, { patientId });

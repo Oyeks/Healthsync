@@ -35,6 +35,7 @@ model User {
   imagingOrders        ImagingOrder[]   @relation("RadiologistOrders")
   imagingRequests      ImagingOrder[]   @relation("RequestingDoctor")
   therapySessions      TherapySession[]
+  labResultsOrdered    LabResult[]
 
   @@index([role])
   @@map("users")
@@ -58,6 +59,11 @@ model Patient {
   insurance String? // JSON: { provider, policyNumber, plan, eligibility }
   allergies String? // JSON: [{ substance, reaction, severity }]
   status    String   @default("outpatient") // outpatient | admitted | discharged
+  // Clinical flags feeding the medication dose-adjustment safety checks
+  // (src/lib/services/dosing.ts). Nullable/false by default — set when known.
+  egfr              Float?   // estimated GFR, mL/min/1.73m² — renal function
+  hepaticImpairment Boolean  @default(false)
+  pregnant          Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -69,6 +75,7 @@ model Patient {
   dispensations   Dispensation[]
   imagingOrders   ImagingOrder[]
   therapySessions TherapySession[]
+  labResults      LabResult[]
 
   @@index([lastName, firstName])
   @@index([phone])
@@ -141,6 +148,10 @@ model Vital {
   respiratoryRate Int?
   weightKg     Float?
   heightCm     Float?
+  // Feed the NEWS2 early warning score (src/lib/services/news2.ts) alongside
+  // the readings above. Consciousness defaults to "alert" — the normal state.
+  consciousness String  @default("alert") // alert | voice | pain | unresponsive
+  onOxygen      Boolean @default(false)
   recordedAt   DateTime @default(now())
 
   @@index([patientId, recordedAt])
@@ -239,6 +250,26 @@ model TherapySession {
   @@index([patientId])
   @@index([therapistId])
   @@map("therapy_sessions")
+}
+
+model LabResult {
+  id            String   @id @default(uuid())
+  patientId     String
+  patient       Patient  @relation(fields: [patientId], references: [id])
+  orderedById   String
+  orderedBy     User     @relation(fields: [orderedById], references: [id])
+  panel         String   // e.g. Full Blood Count, U&E, LFT, Lipid Profile, HbA1c, TFT
+  // JSON: [{ name, value, unit, refLow, refHigh, flag: "low"|"normal"|"high"|"critical" }]
+  // Flags and the summary below are computed once at creation time by
+  // src/lib/services/labs.ts — deterministic reference-range interpretation,
+  // not a diagnosis. The clinician reviews and acts on it.
+  results       String
+  summary       String?
+  status        String   @default("reviewed") // reviewed | pending
+  createdAt     DateTime @default(now())
+
+  @@index([patientId])
+  @@map("lab_results")
 }
 
 model AuditLog {

@@ -39,8 +39,15 @@ export default async function EncounterPage({
       <EncounterForm
         patientId={patient.id}
         patientName={fullName(patient)}
+        patientSex={patient.gender}
         allergiesJson={patient.allergies}
         canPrescribe={can(session.role, "prescribe")}
+        clinicalContext={{
+          ageYears: age(patient.dob),
+          egfr: patient.egfr,
+          hepaticImpairment: patient.hepaticImpairment,
+          pregnant: patient.pregnant,
+        }}
       />
     </div>
   );
