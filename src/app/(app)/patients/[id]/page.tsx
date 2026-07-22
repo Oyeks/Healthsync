@@ -25,6 +25,8 @@ import {
 } from "@/lib/format";
 import { computeNews2 } from "@/lib/services/news2";
 import type { LabAnalyte } from "@/lib/services/labs";
+import { computeQsofa, stageAki, scoreReadmissionRisk } from "@/lib/services/risk-scores";
+import { assessCkdStage, assessCvdRisk, assessDiabetesRisk } from "@/lib/services/disease-risk";
 import { VitalsForm } from "./vitals-form";
 
 const NEWS2_TONE = {
@@ -32,6 +34,14 @@ const NEWS2_TONE = {
   medium: "amber" as const,
   high: "red" as const,
 };
+
+const RISK_TONE = { low: "green" as const, moderate: "amber" as const, high: "red" as const };
+const READMIT_TONE = { low: "green" as const, medium: "amber" as const, high: "red" as const };
+
+function extractAnalyte(results: string, name: string): number | null {
+  const analytes = parseJson<LabAnalyte[]>(results, []);
+  return analytes.find((a) => a.name === name)?.value ?? null;
+}
 
 export default async function PatientPage({
   params,
@@ -72,6 +82,23 @@ export default async function PatientPage({
 
   if (!patient) notFound();
 
+  const [creatinineLabs, hba1cLabs, lipidLabs, allAdmissions] = await Promise.all([
+    prisma.labResult.findMany({
+      where: { patientId: id, panel: "Urea & Electrolytes" },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.labResult.findMany({
+      where: { patientId: id, panel: "HbA1c" },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.labResult.findMany({
+      where: { patientId: id, panel: "Lipid Profile" },
+      orderBy: { createdAt: "desc" },
+      take: 1,
+    }),
+    prisma.admission.findMany({ where: { patientId: id }, orderBy: { admittedAt: "desc" } }),
+  ]);
+
   const allergies = parseJson<Allergy[]>(patient.allergies, []);
   const insurance = parseJson<Insurance | null>(patient.insurance, null);
   const latestVitals = patient.vitals[0];
@@ -87,6 +114,58 @@ export default async function PatientPage({
         temperature: latestVitals.temperature,
       })
     : null;
+
+  // Risk assessment — deterministic screening scores, not a diagnosis.
+  const qsofa = latestVitals
+    ? computeQsofa({
+        respiratoryRate: latestVitals.respiratoryRate,
+        systolic: latestVitals.systolic,
+        consciousness: latestVitals.consciousness,
+      })
+    : null;
+
+  const creatinineReadings = creatinineLabs
+    .map((l) => ({ value: extractAnalyte(l.results, "Creatinine"), date: l.createdAt }))
+    .filter((r): r is { value: number; date: Date } => r.value != null);
+  const aki = stageAki(creatinineReadings);
+
+  const hba1cReadings = hba1cLabs
+    .map((l) => ({ value: extractAnalyte(l.results, "HbA1c"), date: l.createdAt }))
+    .filter((r): r is { value: number; date: Date } => r.value != null);
+  const diabetesRisk = assessDiabetesRisk(hba1cReadings);
+
+  const ckd = patient.egfr != null ? assessCkdStage(patient.egfr) : null;
+
+  const allDiagnosisCodes = new Set<string>();
+  for (const r of patient.records) {
+    for (const d of parseJson<Diagnosis[]>(r.diagnoses, [])) {
+      if (d.code) allDiagnosisCodes.add(d.code);
+    }
+  }
+  const hasDiabetesDiagnosis = Array.from(allDiagnosisCodes).some(
+    (c) => c.startsWith("E10") || c.startsWith("E11"),
+  );
+  const hasHypertensionDiagnosis = Array.from(allDiagnosisCodes).some((c) => c.startsWith("I10"));
+  const latestLdl = lipidLabs[0] ? extractAnalyte(lipidLabs[0].results, "LDL") : null;
+  const cvd = assessCvdRisk({
+    age: age(patient.dob),
+    systolic: latestVitals?.systolic ?? null,
+    hasDiabetesDiagnosis,
+    hasHypertensionDiagnosis,
+    ldl: latestLdl,
+  });
+
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 86_400_000);
+  const admissionsInLast90Days = allAdmissions.filter((a) => a.admittedAt >= ninetyDaysAgo).length;
+  const lastDischarged = allAdmissions.find((a) => a.status === "discharged" && a.dischargedAt);
+  const lastLengthOfStayDays = lastDischarged?.dischargedAt
+    ? (lastDischarged.dischargedAt.getTime() - lastDischarged.admittedAt.getTime()) / 86_400_000
+    : null;
+  const readmission = scoreReadmissionRisk({
+    admissionsInLast90Days,
+    lastLengthOfStayDays,
+    chronicDiagnosisCount: allDiagnosisCodes.size,
+  });
 
   return (
     <>
@@ -367,6 +446,71 @@ export default async function PatientPage({
               )}
             </Card>
           )}
+
+          <Card>
+            <CardHeader
+              title="Risk assessment"
+              subtitle="Deterministic screening scores for clinician review — not a diagnosis"
+            />
+            <div className="grid gap-4 p-5 sm:grid-cols-2">
+              {qsofa && (
+                <div>
+                  <p className="text-xs text-ink-500">Sepsis screen (qSOFA)</p>
+                  <p className="mt-0.5 flex items-center gap-2 text-sm font-semibold text-ink-900">
+                    {qsofa.score}/3
+                    {qsofa.highRisk && <Badge tone="red">High risk</Badge>}
+                  </p>
+                </div>
+              )}
+
+              {aki && aki.stage !== "none" && (
+                <div>
+                  <p className="text-xs text-ink-500">Acute kidney injury</p>
+                  <p className="mt-0.5 flex items-center gap-2 text-sm font-semibold text-ink-900">
+                    <Badge tone={aki.stage === "stage3" ? "red" : "amber"}>
+                      KDIGO {aki.stage.replace("stage", "stage ")}
+                    </Badge>
+                  </p>
+                  <p className="mt-1 text-xs text-ink-500">{aki.detail}</p>
+                </div>
+              )}
+
+              {ckd && (
+                <div>
+                  <p className="text-xs text-ink-500">CKD stage</p>
+                  <p className="mt-0.5 text-sm font-semibold text-ink-900">{ckd.label}</p>
+                </div>
+              )}
+
+              <div>
+                <p className="text-xs text-ink-500">Cardiovascular risk</p>
+                <p className="mt-0.5">
+                  <Badge tone={RISK_TONE[cvd.band]}>{cvd.band}</Badge>
+                </p>
+                <p className="mt-1 text-xs text-ink-700">{cvd.factors.join("; ")}</p>
+                <p className="mt-1 text-xs text-ink-500">{cvd.recommendations.join("; ")}</p>
+              </div>
+
+              {diabetesRisk && (
+                <div>
+                  <p className="text-xs text-ink-500">Diabetes control</p>
+                  <p className="mt-0.5 text-sm font-semibold text-ink-900">
+                    HbA1c {diabetesRisk.latestHba1c}% · {diabetesRisk.band}
+                  </p>
+                  <p className="mt-1 text-xs text-ink-500">{diabetesRisk.recommendation}</p>
+                </div>
+              )}
+
+              <div>
+                <p className="text-xs text-ink-500">30-day readmission risk</p>
+                <p className="mt-0.5 flex items-center gap-2 text-sm font-semibold text-ink-900">
+                  {readmission.score}%
+                  <Badge tone={READMIT_TONE[readmission.band]}>{readmission.band}</Badge>
+                </p>
+                <p className="mt-1 text-xs text-ink-500">{readmission.reasons.join("; ")}</p>
+              </div>
+            </div>
+          </Card>
 
           <Card>
             <CardHeader

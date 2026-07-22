@@ -53,6 +53,10 @@ export default async function PortalPage() {
     },
   });
 
+  // The session references a patient record that no longer exists (e.g. a
+  // stale cookie surviving a database reset). /login independently verifies
+  // this same condition before trusting the redirect back here, so this
+  // doesn't become an infinite loop — see src/app/login/page.tsx.
   if (!patient) redirect("/login");
 
   const now = new Date();

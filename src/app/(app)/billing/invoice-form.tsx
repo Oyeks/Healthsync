@@ -4,6 +4,7 @@ import { useActionState, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { createInvoice, type BillingState } from "./actions";
 import { Button, ErrorBanner, Field } from "@/components/ui";
+import { searchCpt } from "@/lib/services/coding";
 
 type LineItem = { description: string; quantity: number; unitPrice: number };
 
@@ -29,6 +30,12 @@ export function InvoiceForm({
   const [items, setItems] = useState<LineItem[]>([
     { description: "", quantity: 1, unitPrice: 0 },
   ]);
+  const [suggestingIndex, setSuggestingIndex] = useState<number | null>(null);
+
+  const cptSuggestions = useMemo(() => {
+    if (suggestingIndex == null) return [];
+    return searchCpt(items[suggestingIndex]?.description ?? "");
+  }, [suggestingIndex, items]);
 
   const total = useMemo(
     () => items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0),
@@ -74,13 +81,33 @@ export function InvoiceForm({
         <div className="mt-2 space-y-2">
           {items.map((item, i) => (
             <div key={i} className="flex items-end gap-2">
-              <div className="flex-1">
+              <div className="relative flex-1">
                 <input
                   placeholder="Description"
                   value={item.description}
                   onChange={(e) => updateItem(i, { description: e.target.value })}
+                  onFocus={() => setSuggestingIndex(i)}
+                  onBlur={() => setTimeout(() => setSuggestingIndex(null), 150)}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 />
+                {suggestingIndex === i && cptSuggestions.length > 0 && (
+                  <ul className="absolute z-10 mt-1 w-full divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white shadow-md">
+                    {cptSuggestions.map((s) => (
+                      <li key={s.code}>
+                        <button
+                          type="button"
+                          onMouseDown={() =>
+                            updateItem(i, { description: `${s.code} — ${s.description}` })
+                          }
+                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-slate-50"
+                        >
+                          <span className="font-medium text-ink-900">{s.code}</span>
+                          <span className="text-ink-500">{s.description}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
               <div className="w-20">
                 <input

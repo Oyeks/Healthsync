@@ -18,6 +18,7 @@ import {
   type Urgency,
 } from "@/lib/services/triage";
 import { searchIcd10 } from "@/lib/services/coding";
+import { findGuideline, type GuidelinePathway } from "@/lib/services/guidelines";
 import type { Prescription } from "@/lib/format";
 
 const URGENCY_STYLE: Record<Urgency, string> = {
@@ -224,6 +225,25 @@ export function EncounterForm({
     setDiagnosisText(lines.join("\n") + "\n");
   }
 
+  // Clinical guideline assistant — matches completed diagnosis lines
+  // against a small reference pathway table.
+  const guidelineMatches = useMemo(() => {
+    const codes = diagnosisText
+      .split("\n")
+      .map((l) => l.split("|")[0]?.trim())
+      .filter((c): c is string => Boolean(c));
+    const matches: GuidelinePathway[] = [];
+    const seen = new Set<string>();
+    for (const code of codes) {
+      const g = findGuideline(code);
+      if (g && !seen.has(g.condition)) {
+        seen.add(g.condition);
+        matches.push(g);
+      }
+    }
+    return matches;
+  }, [diagnosisText]);
+
   return (
     <form action={formAction} className="space-y-6">
       <input type="hidden" name="patientId" value={patientId} />
@@ -294,6 +314,19 @@ export function EncounterForm({
                 </li>
               ))}
             </ul>
+          )}
+
+          {guidelineMatches.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {guidelineMatches.map((g) => (
+                <div key={g.condition} className="rounded-lg border border-brand-200 bg-brand-50 p-3">
+                  <p className="text-sm font-semibold text-brand-900">
+                    {g.condition} — suggested pathway
+                  </p>
+                  <p className="mt-1 text-sm text-brand-800">{g.pathway}</p>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </Card>

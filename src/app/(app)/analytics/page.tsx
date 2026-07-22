@@ -7,7 +7,8 @@ import { PrintReportHeader } from "@/components/print-report-header";
 import { formatDateTime, fullName } from "@/lib/format";
 import { summariseWards, forecastOccupancy } from "@/lib/services/occupancy";
 import { scoreNoShowRisk, type NoShowRisk } from "@/lib/services/noshow";
-import { computeDiagnosisTrends } from "@/lib/services/population-health";
+import { computeDiagnosisTrends, computeMedicineUsageTrends } from "@/lib/services/population-health";
+import { forecastStaffing } from "@/lib/services/staffing";
 
 const RISK_TONE = { low: "green" as const, medium: "amber" as const, high: "red" as const };
 const RISK_BAR = { low: "bg-sync-500", medium: "bg-amber-500", high: "bg-red-500" };
@@ -77,6 +78,10 @@ export default async function AnalyticsPage() {
   const now = new Date();
   const windowStart = new Date(now.getTime() - 30 * 86_400_000);
   const priorWindowStart = new Date(now.getTime() - 60 * 86_400_000);
+  const dayStart = new Date(now);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(dayStart);
+  dayEnd.setDate(dayEnd.getDate() + 1);
 
   const [
     beds,
@@ -85,6 +90,9 @@ export default async function AnalyticsPage() {
     upcomingAppointments,
     currentPeriodRecords,
     priorPeriodRecords,
+    todaysAppointmentCount,
+    currentPeriodDispensations,
+    priorPeriodDispensations,
   ] = await Promise.all([
     prisma.bed.findMany({ select: { ward: true, status: true } }),
     prisma.admission.findMany({
@@ -111,6 +119,17 @@ export default async function AnalyticsPage() {
     prisma.medicalRecord.findMany({
       where: { visitDate: { gte: priorWindowStart, lt: windowStart } },
       select: { diagnoses: true },
+    }),
+    prisma.appointment.count({
+      where: { startTime: { gte: dayStart, lt: dayEnd }, status: { in: ["booked", "completed"] } },
+    }),
+    prisma.dispensation.findMany({
+      where: { status: "dispensed", createdAt: { gte: windowStart } },
+      select: { drug: true, quantity: true },
+    }),
+    prisma.dispensation.findMany({
+      where: { status: "dispensed", createdAt: { gte: priorWindowStart, lt: windowStart } },
+      select: { drug: true, quantity: true },
     }),
   ]);
 
@@ -156,6 +175,16 @@ export default async function AnalyticsPage() {
   const totalRisks = risks.length || 1;
 
   const diagnosisTrends = computeDiagnosisTrends(currentPeriodRecords, priorPeriodRecords);
+  const medicineTrends = computeMedicineUsageTrends(
+    currentPeriodDispensations,
+    priorPeriodDispensations,
+  );
+
+  const staffing = forecastStaffing({
+    currentOccupiedByWard: wardSummary.map((w) => ({ ward: w.ward, occupied: w.occupied })),
+    projectedOccupiedIn3Days: forecast.projectedOccupiedIn3Days,
+    todaysAppointments: todaysAppointmentCount,
+  });
 
   return (
     <>
@@ -309,6 +338,62 @@ export default async function AnalyticsPage() {
                     <Badge tone={TREND_TONE[t.direction]}>{TREND_LABEL[t.direction]}</Badge>
                   </div>
                   <TrendBars currentCount={t.currentCount} priorCount={t.priorCount} />
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card className="print:break-inside-avoid">
+          <CardHeader
+            title="Staffing forecast"
+            subtitle="Illustrative ratios (1 nurse : 4 ward / 1.5 ICU patients) — not a scheduling system"
+          />
+          <div className="grid grid-cols-2 gap-4 p-5">
+            <div>
+              <p className="text-xs text-ink-500">Nurses needed now</p>
+              <p className="mt-1 text-2xl font-bold text-ink-900">{staffing.nursesNeededNow}</p>
+              <p className="text-xs text-ink-500">
+                {staffing.currentWardPatients} ward + {staffing.currentIcuPatients} ICU patients
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-ink-500">Nurses needed in 3 days</p>
+              <p className="mt-1 text-2xl font-bold text-brand-700">
+                {staffing.nursesNeededIn3Days}
+              </p>
+              <p className="text-xs text-ink-500">
+                Based on projected {staffing.projectedWardPatientsIn3Days} occupied beds
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-ink-500">Doctors needed today</p>
+              <p className="mt-1 text-2xl font-bold text-ink-900">
+                {staffing.doctorsNeededToday}
+              </p>
+              <p className="text-xs text-ink-500">
+                {staffing.todaysAppointments} appointments · ~16 consults/doctor/day
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="print:break-inside-avoid">
+          <CardHeader
+            title="Medicine usage trends"
+            subtitle="Quantity dispensed in the last 30 days vs. the 30 days before that"
+          />
+          {medicineTrends.length === 0 ? (
+            <EmptyState message="No dispensation data recorded yet." />
+          ) : (
+            <div className="space-y-4 p-5">
+              {medicineTrends.map((t) => (
+                <div key={t.drug} className="print:break-inside-avoid">
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="font-medium text-ink-900">{t.drug}</span>
+                    <Badge tone={TREND_TONE[t.direction]}>{TREND_LABEL[t.direction]}</Badge>
+                  </div>
+                  <TrendBars currentCount={t.currentQuantity} priorCount={t.priorQuantity} />
                 </div>
               ))}
             </div>

@@ -1,11 +1,23 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
+import { prisma } from "@/lib/db";
 import { LogoMark, Wordmark } from "@/components/logo";
 import { LoginForm } from "./login-form";
 
 export default async function LoginPage() {
   const session = await getSession();
-  if (session) redirect(session.role === "patient" ? "/portal" : "/dashboard");
+  if (session) {
+    if (session.role !== "patient") redirect("/dashboard");
+
+    // A patient session's cookie can outlive the patient record it points
+    // to (e.g. a database reset in development). Verify before trusting it
+    // — otherwise this page and /portal would redirect to each other forever.
+    const patientExists = await prisma.patient.findUnique({
+      where: { id: session.patientId ?? "" },
+      select: { id: true },
+    });
+    if (patientExists) redirect("/portal");
+  }
 
   return (
     <main className="flex min-h-screen">

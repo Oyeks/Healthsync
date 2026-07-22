@@ -331,6 +331,21 @@ async function main() {
     },
   });
 
+  // A prior heart-failure admission for Emeka within the last 90 days —
+  // feeds the 30-day readmission risk score (src/lib/services/risk-scores.ts)
+  // with a real repeat-admission signal, consistent with heart failure's
+  // characteristically high readmission rate.
+  await prisma.admission.create({
+    data: {
+      patientId: emeka.id,
+      bedId: beds.find((b) => b.ward === "Medical Ward A")!.id,
+      admittedAt: at(-45, 8, 0),
+      dischargedAt: at(-40, 11, 0),
+      reason: "Heart failure exacerbation — diuresis and stabilisation",
+      status: "discharged",
+    },
+  });
+
   // ---- Appointments --------------------------------------------------------
   const past = await prisma.appointment.create({
     data: {
@@ -618,6 +633,56 @@ async function main() {
         { name: "eGFR", value: 95, unit: "mL/min/1.73m²", refLow: 90, refHigh: 999, flag: "normal" },
       ]),
       summary: "All values within reference range.",
+      status: "reviewed",
+      createdAt: at(-6, 9, 0),
+    },
+  });
+
+  // Baseline U&E for Emeka predating his admission — gives the AKI staging
+  // service (src/lib/services/risk-scores.ts) a real "vs. baseline" to
+  // compare his admission creatinine (165) against.
+  await prisma.labResult.create({
+    data: {
+      patientId: emeka.id,
+      orderedById: drBello.id,
+      panel: "Urea & Electrolytes",
+      results: JSON.stringify([
+        { name: "Sodium", value: 139, unit: "mmol/L", refLow: 135, refHigh: 145, flag: "normal" },
+        { name: "Potassium", value: 4.4, unit: "mmol/L", refLow: 3.5, refHigh: 5.1, flag: "normal" },
+        { name: "Urea", value: 6.1, unit: "mmol/L", refLow: 2.5, refHigh: 7.8, flag: "normal" },
+        { name: "Creatinine", value: 88, unit: "µmol/L", refLow: 60, refHigh: 110, flag: "normal" },
+        { name: "eGFR", value: 78, unit: "mL/min/1.73m²", refLow: 90, refHigh: 999, flag: "low" },
+      ]),
+      summary: "Mildly reduced eGFR, otherwise unremarkable — routine outpatient recheck.",
+      status: "reviewed",
+      createdAt: at(-30, 10, 0),
+    },
+  });
+
+  // Two HbA1c readings for Amina — feeds the diabetes risk trend
+  // (src/lib/services/disease-risk.ts): prediabetic and worsening.
+  await prisma.labResult.create({
+    data: {
+      patientId: amina.id,
+      orderedById: drOkafor.id,
+      panel: "HbA1c",
+      results: JSON.stringify([
+        { name: "HbA1c", value: 5.5, unit: "%", refLow: 4, refHigh: 5.6, flag: "normal" },
+      ]),
+      summary: "All values within reference range.",
+      status: "reviewed",
+      createdAt: at(-60, 9, 0),
+    },
+  });
+  await prisma.labResult.create({
+    data: {
+      patientId: amina.id,
+      orderedById: drOkafor.id,
+      panel: "HbA1c",
+      results: JSON.stringify([
+        { name: "HbA1c", value: 5.9, unit: "%", refLow: 4, refHigh: 5.6, flag: "high" },
+      ]),
+      summary: "Prediabetic range.",
       status: "reviewed",
       createdAt: at(-6, 9, 0),
     },
@@ -936,7 +1001,7 @@ async function main() {
     },
   });
 
-  console.log(`Seeded: 10 users, 4 patients, ${beds.length} beds, 7 appointments, 3 admissions, 3 dispensations, 5 drug stock items, 3 imaging orders, 3 therapy sessions, 3 lab results, 5 invoices, 3 payments.`);
+  console.log(`Seeded: 10 users, 4 patients, ${beds.length} beds, 7 appointments, 4 admissions, 3 dispensations, 5 drug stock items, 3 imaging orders, 3 therapy sessions, 7 lab results, 5 invoices, 3 payments.`);
   console.log(`All accounts use password: ${PASSWORD}`);
 }
 

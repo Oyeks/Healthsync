@@ -58,3 +58,46 @@ function countDiagnoses(records: { diagnoses: string | null }[]) {
   }
   return counts;
 }
+
+/**
+ * Medicine usage trends — same idea as diagnosis trends, applied to
+ * dispensed quantity per drug (part of AI recommendation doc §12/§22,
+ * "medicine usage" / "medicine demand").
+ */
+export type MedicineUsageTrend = {
+  drug: string;
+  currentQuantity: number;
+  priorQuantity: number;
+  direction: "up" | "down" | "flat" | "new";
+};
+
+export function computeMedicineUsageTrends(
+  currentPeriodDispensations: { drug: string; quantity: number }[],
+  priorPeriodDispensations: { drug: string; quantity: number }[],
+  limit = 8,
+): MedicineUsageTrend[] {
+  const current = sumByDrug(currentPeriodDispensations);
+  const prior = sumByDrug(priorPeriodDispensations);
+
+  const trends: MedicineUsageTrend[] = [];
+  for (const [drug, currentQuantity] of current) {
+    const priorQuantity = prior.get(drug) ?? 0;
+    let direction: MedicineUsageTrend["direction"] = "flat";
+    if (priorQuantity === 0) direction = "new";
+    else if (currentQuantity > priorQuantity) direction = "up";
+    else if (currentQuantity < priorQuantity) direction = "down";
+
+    trends.push({ drug, currentQuantity, priorQuantity, direction });
+  }
+
+  trends.sort((a, b) => b.currentQuantity - a.currentQuantity);
+  return trends.slice(0, limit);
+}
+
+function sumByDrug(dispensations: { drug: string; quantity: number }[]) {
+  const sums = new Map<string, number>();
+  for (const d of dispensations) {
+    sums.set(d.drug, (sums.get(d.drug) ?? 0) + d.quantity);
+  }
+  return sums;
+}
