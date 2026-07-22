@@ -49,7 +49,22 @@ export async function createDispensation(
     drug: data.drug,
   });
 
+  // Best-effort stock decrement — case-insensitive match against tracked
+  // inventory (src/lib/services/inventory.ts). A miss doesn't block dispensing;
+  // not every dispensed drug is necessarily under formal stock tracking yet.
+  const allStock = await prisma.drugStock.findMany();
+  const matchingStock = allStock.find(
+    (s) => s.drugName.trim().toLowerCase() === data.drug.trim().toLowerCase(),
+  );
+  if (matchingStock) {
+    await prisma.drugStock.update({
+      where: { id: matchingStock.id },
+      data: { quantityOnHand: Math.max(0, matchingStock.quantityOnHand - data.quantity) },
+    });
+  }
+
   revalidatePath("/pharmacy");
+  revalidatePath("/inventory");
   return {};
 }
 

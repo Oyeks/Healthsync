@@ -17,6 +17,7 @@ const NAV = [
   },
   { href: "/laboratory", label: "Laboratory", permission: "lab:read" },
   { href: "/pharmacy", label: "Pharmacy", permission: "pharmacy:read" },
+  { href: "/inventory", label: "Inventory", permission: "inventory:read" },
   { href: "/radiology", label: "Radiology", permission: "imaging:read" },
   {
     href: "/physiotherapy",
@@ -30,6 +31,7 @@ const NAV = [
     permission: "engagement:read",
   },
   { href: "/analytics", label: "Analytics", permission: "analytics:read" },
+  { href: "/billing", label: "Billing", permission: "billing:read" },
   { href: "/staff", label: "Staff", permission: "staff:manage" },
   { href: "/audit", label: "Audit Log", permission: "audit:read" },
 ] as const;

@@ -26,6 +26,9 @@ async function main() {
 
   // Clear in dependency order so the seed is repeatable.
   await prisma.auditLog.deleteMany();
+  await prisma.payment.deleteMany();
+  await prisma.invoice.deleteMany();
+  await prisma.drugStock.deleteMany();
   await prisma.labResult.deleteMany();
   await prisma.therapySession.deleteMany();
   await prisma.imagingOrder.deleteMany();
@@ -88,7 +91,7 @@ async function main() {
     },
   });
 
-  await prisma.user.create({
+  const biller = await prisma.user.create({
     data: {
       email: "billing@healthsync.io",
       passwordHash,
@@ -655,6 +658,54 @@ async function main() {
     ],
   });
 
+  // ---- Drug Stock (Pharmacy inventory) --------------------------------------
+  // Quantities feed src/lib/services/inventory.ts against the dispensations
+  // above — a spread of statuses (ok, low + expiring, reorder due, no usage).
+  await prisma.drugStock.createMany({
+    data: [
+      {
+        drugName: "Amlodipine",
+        unit: "tablet",
+        quantityOnHand: 200,
+        reorderThreshold: 30,
+        unitCost: 15,
+        expiryDate: at(300, 0),
+      },
+      {
+        drugName: "Furosemide",
+        unit: "vial",
+        quantityOnHand: 15,
+        reorderThreshold: 10,
+        unitCost: 250,
+        expiryDate: at(45, 0),
+      },
+      {
+        drugName: "Lisinopril",
+        unit: "tablet",
+        quantityOnHand: 180,
+        reorderThreshold: 40,
+        unitCost: 20,
+        expiryDate: at(400, 0),
+      },
+      {
+        drugName: "Amoxicillin",
+        unit: "capsule",
+        quantityOnHand: 25,
+        reorderThreshold: 50,
+        unitCost: 10,
+        expiryDate: at(200, 0),
+      },
+      {
+        drugName: "Co-trimoxazole",
+        unit: "tablet",
+        quantityOnHand: 60,
+        reorderThreshold: 20,
+        unitCost: 8,
+        expiryDate: at(20, 0),
+      },
+    ],
+  });
+
   // ---- Imaging Orders (Radiology) ------------------------------------------
   await prisma.imagingOrder.create({
     data: {
@@ -756,6 +807,124 @@ async function main() {
     },
   });
 
+  // ---- Billing (Invoices & Payments) ----------------------------------------
+  // A spread of statuses feeding src/lib/services/revenue.ts: paid, partial,
+  // an aged-unpaid invoice (>30 days), an overpayment, and a same-day
+  // possible-duplicate pair. Zainab's earlier registration visit is left
+  // deliberately unbilled to populate the "unbilled encounters" list.
+  const aminaInvoice = await prisma.invoice.create({
+    data: {
+      patientId: amina.id,
+      createdById: biller.id,
+      appointmentId: past.id,
+      items: JSON.stringify([
+        { description: "General consultation", quantity: 1, unitPrice: 5000 },
+        { description: "Medication dispensing fee", quantity: 1, unitPrice: 1500 },
+      ]),
+      total: 6500,
+      status: "paid",
+      createdAt: at(-7, 11, 0),
+    },
+  });
+  await prisma.payment.create({
+    data: {
+      invoiceId: aminaInvoice.id,
+      amount: 6500,
+      method: "cash",
+      recordedById: biller.id,
+      createdAt: at(-7, 11, 15),
+    },
+  });
+
+  // Aged unpaid — ICU charges for Emeka, invoiced 35 days ago and never paid.
+  await prisma.invoice.create({
+    data: {
+      patientId: emeka.id,
+      createdById: biller.id,
+      items: JSON.stringify([
+        { description: "ICU bed charge (per day)", quantity: 3, unitPrice: 25000 },
+      ]),
+      total: 75000,
+      status: "unpaid",
+      createdAt: at(-35, 9, 0),
+    },
+  });
+
+  // Partial payment — Zainab's ultrasound referral.
+  const zainabInvoice = await prisma.invoice.create({
+    data: {
+      patientId: zainab.id,
+      createdById: biller.id,
+      items: JSON.stringify([
+        { description: "Consultation", quantity: 1, unitPrice: 5000 },
+        { description: "Abdominal ultrasound", quantity: 1, unitPrice: 15000 },
+      ]),
+      total: 20000,
+      status: "partial",
+      createdAt: at(-1, 14, 30),
+    },
+  });
+  await prisma.payment.create({
+    data: {
+      invoiceId: zainabInvoice.id,
+      amount: 10000,
+      method: "transfer",
+      reference: "TRX-88213",
+      recordedById: biller.id,
+      createdAt: at(-1, 14, 45),
+    },
+  });
+
+  // Overpayment — Tobi's immunisation invoice, ₦3,500 paid against ₦3,000.
+  const tobiInvoice = await prisma.invoice.create({
+    data: {
+      patientId: tobi.id,
+      createdById: biller.id,
+      items: JSON.stringify([
+        { description: "Immunisation", quantity: 1, unitPrice: 3000 },
+      ]),
+      total: 3000,
+      status: "paid",
+      createdAt: at(-3, 15, 30),
+    },
+  });
+  await prisma.payment.create({
+    data: {
+      invoiceId: tobiInvoice.id,
+      amount: 3500,
+      method: "cash",
+      recordedById: biller.id,
+      createdAt: at(-3, 15, 45),
+    },
+  });
+
+  // Possible duplicate — two identical-amount invoices for Amina within
+  // minutes of each other.
+  await prisma.invoice.create({
+    data: {
+      patientId: amina.id,
+      createdById: biller.id,
+      items: JSON.stringify([
+        { description: "Follow-up consultation", quantity: 1, unitPrice: 5000 },
+      ]),
+      total: 5000,
+      status: "unpaid",
+      createdAt: at(-1, 9, 0),
+    },
+  });
+  await prisma.invoice.create({
+    data: {
+      patientId: amina.id,
+      createdById: biller.id,
+      items: JSON.stringify([
+        { description: "Follow-up consultation", quantity: 1, unitPrice: 5000 },
+      ]),
+      total: 5000,
+      status: "unpaid",
+      createdAt: at(-1, 9, 5),
+    },
+  });
+
   // ---- Seed audit trail ----------------------------------------------------
   await prisma.auditLog.create({
     data: {
@@ -767,7 +936,7 @@ async function main() {
     },
   });
 
-  console.log(`Seeded: 10 users, 4 patients, ${beds.length} beds, 7 appointments, 3 admissions, 3 dispensations, 3 imaging orders, 3 therapy sessions, 3 lab results.`);
+  console.log(`Seeded: 10 users, 4 patients, ${beds.length} beds, 7 appointments, 3 admissions, 3 dispensations, 5 drug stock items, 3 imaging orders, 3 therapy sessions, 3 lab results, 5 invoices, 3 payments.`);
   console.log(`All accounts use password: ${PASSWORD}`);
 }
 
