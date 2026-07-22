@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { createTherapySession, type TherapyState } from "./actions";
 import { Button, ErrorBanner, Field } from "@/components/ui";
+import { DictationTextarea } from "@/components/dictation-textarea";
 
 export function TherapyForm({
   patients,
@@ -87,7 +88,12 @@ export function TherapyForm({
         name="nextSessionDate"
         type="date"
       />
-      <Field label="Session notes" name="notes" rows={3} placeholder="Clinical observations, progress notes" />
+      <DictationTextarea
+        label="Session notes"
+        name="notes"
+        rows={3}
+        placeholder="Clinical observations, progress notes"
+      />
       <Button type="submit" disabled={pending}>
         {pending ? "Saving..." : "Record session"}
       </Button>

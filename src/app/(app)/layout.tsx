@@ -24,6 +24,11 @@ const NAV = [
     permission: "therapy:read",
   },
   { href: "/wards", label: "Wards & Beds", permission: "admission:write" },
+  {
+    href: "/care-gaps",
+    label: "Care Gaps",
+    permission: "engagement:read",
+  },
   { href: "/analytics", label: "Analytics", permission: "analytics:read" },
   { href: "/staff", label: "Staff", permission: "staff:manage" },
   { href: "/audit", label: "Audit Log", permission: "audit:read" },

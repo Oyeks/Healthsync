@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import { createEncounter, type EncounterState } from "./actions";
 import { Button, Card, CardHeader, ErrorBanner } from "@/components/ui";
+import { DictationTextarea } from "@/components/dictation-textarea";
 import { screenPrescriptions } from "@/lib/services/cds";
 import {
   screenDoseAdjustments,
@@ -16,6 +17,7 @@ import {
   highestUrgency,
   type Urgency,
 } from "@/lib/services/triage";
+import { searchIcd10 } from "@/lib/services/coding";
 import type { Prescription } from "@/lib/format";
 
 const URGENCY_STYLE: Record<Urgency, string> = {
@@ -195,6 +197,7 @@ export function EncounterForm({
     {},
   );
   const [prescriptionText, setPrescriptionText] = useState("");
+  const [diagnosisText, setDiagnosisText] = useState("");
   const [sign, setSign] = useState(true);
 
   // Live safety screening as the clinician types.
@@ -206,6 +209,20 @@ export function EncounterForm({
     ];
   }, [prescriptionText, allergiesJson, clinicalContext]);
   const hasCritical = alerts.some((a) => a.severity === "critical");
+
+  // ICD-10 coding assistant — suggests codes from the last unfinished line.
+  const icd10Suggestions = useMemo(() => {
+    const lines = diagnosisText.split("\n");
+    const last = lines[lines.length - 1] ?? "";
+    if (last.includes("|")) return [];
+    return searchIcd10(last);
+  }, [diagnosisText]);
+
+  function applyIcd10Suggestion(code: string, description: string) {
+    const lines = diagnosisText.split("\n");
+    lines[lines.length - 1] = `${code} | ${description}`;
+    setDiagnosisText(lines.join("\n") + "\n");
+  }
 
   return (
     <form action={formAction} className="space-y-6">
@@ -225,23 +242,23 @@ export function EncounterForm({
           subtitle={`Clinical encounter for ${patientName}`}
         />
         <div className="space-y-4 p-5">
-          <Textarea
+          <DictationTextarea
             label="Subjective"
             name="subjective"
             placeholder="Presenting complaint, history as reported by the patient…"
           />
-          <Textarea
+          <DictationTextarea
             label="Objective"
             name="objective"
             placeholder="Examination findings, observations, investigation results…"
           />
-          <Textarea
+          <DictationTextarea
             label="Assessment"
             name="assessment"
             required
             placeholder="Clinical impression and differential…"
           />
-          <Textarea
+          <DictationTextarea
             label="Plan"
             name="plan"
             placeholder="Management plan, investigations, follow-up…"
@@ -252,14 +269,32 @@ export function EncounterForm({
       <Card>
         <CardHeader
           title="Diagnoses"
-          subtitle="One per line — format: ICD-10 code | description"
+          subtitle="One per line — format: ICD-10 code | description. Start typing on a new line for coding suggestions."
         />
         <div className="p-5">
           <Textarea
             label="ICD-10 coded diagnoses"
             name="diagnoses"
+            value={diagnosisText}
+            onChange={setDiagnosisText}
             placeholder={"I10 | Essential (primary) hypertension\nE11.9 | Type 2 diabetes mellitus"}
           />
+          {icd10Suggestions.length > 0 && (
+            <ul className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">
+              {icd10Suggestions.map((s) => (
+                <li key={s.code}>
+                  <button
+                    type="button"
+                    onClick={() => applyIcd10Suggestion(s.code, s.description)}
+                    className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                  >
+                    <span className="font-medium text-ink-900">{s.code}</span>
+                    <span className="flex-1 text-ink-700">{s.description}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </Card>
 
