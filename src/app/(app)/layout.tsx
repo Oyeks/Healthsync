@@ -53,7 +53,7 @@ export default async function AppLayout({
 
   return (
     <div className="flex min-h-screen">
-      <aside className="hidden w-60 shrink-0 flex-col bg-ink-900 md:flex">
+      <aside className="hidden w-60 shrink-0 flex-col bg-ink-900 md:flex print:hidden">
         <div className="flex items-center gap-2.5 px-5 py-5">
           <LogoMark className="h-8 w-8" />
           <Wordmark className="text-lg" />
@@ -83,7 +83,7 @@ export default async function AppLayout({
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Mobile bar — the sidebar is hidden below md. */}
-        <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 md:hidden">
+        <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 md:hidden print:hidden">
           <Link href="/dashboard" className="flex items-center gap-2">
             <LogoMark className="h-7 w-7" />
             <Wordmark className="text-base" />
@@ -98,7 +98,7 @@ export default async function AppLayout({
           </form>
         </header>
 
-        <nav className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 md:hidden">
+        <nav className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 md:hidden print:hidden">
           {items.map((item) => (
             <NavLink
               key={item.href}
@@ -109,7 +109,9 @@ export default async function AppLayout({
           ))}
         </nav>
 
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 print:p-0">
+          {children}
+        </main>
       </div>
     </div>
   );

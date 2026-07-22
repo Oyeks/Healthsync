@@ -50,3 +50,18 @@ body {
   outline: 2px solid var(--color-brand-600);
   outline-offset: 2px;
 }
+
+/* Printing / "Save as PDF" — preserve brand colors (browsers strip
+   backgrounds by default) and keep cards from splitting across pages. */
+@media print {
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  @page {
+    margin: 1.5cm;
+  }
+  body {
+    background: white;
+  }
+}

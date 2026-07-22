@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -17,6 +18,13 @@ import {
   type Diagnosis,
   type Prescription,
 } from "@/lib/format";
+
+const INVOICE_STATUS_TONE = {
+  unpaid: "amber" as const,
+  partial: "blue" as const,
+  paid: "green" as const,
+  void: "red" as const,
+};
 
 export default async function PortalPage() {
   const session = await getSession();
@@ -38,6 +46,10 @@ export default async function PortalPage() {
         include: { doctor: true },
       },
       vitals: { orderBy: { recordedAt: "desc" }, take: 1 },
+      invoices: {
+        orderBy: { createdAt: "desc" },
+        include: { payments: true },
+      },
     },
   });
 
@@ -145,6 +157,52 @@ export default async function PortalPage() {
             </dl>
           </Card>
         )}
+
+        <Card>
+          <CardHeader
+            title="Billing"
+            subtitle="Your invoices and payment receipts"
+          />
+          {patient.invoices.length === 0 ? (
+            <EmptyState message="No invoices on file." />
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {patient.invoices.map((invoice) => {
+                const paid = invoice.payments.reduce((sum, p) => sum + p.amount, 0);
+                const balance = Math.max(0, invoice.total - paid);
+                return (
+                  <li key={invoice.id} className="px-5 py-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-ink-900">
+                          ₦{invoice.total.toLocaleString()}
+                        </p>
+                        <p className="text-sm text-ink-500">
+                          {formatDate(invoice.createdAt)}
+                          {invoice.status !== "paid" &&
+                            invoice.status !== "void" &&
+                            balance > 0 &&
+                            ` · ₦${balance.toLocaleString()} outstanding`}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Badge tone={INVOICE_STATUS_TONE[invoice.status as keyof typeof INVOICE_STATUS_TONE]}>
+                          {invoice.status}
+                        </Badge>
+                        <Link
+                          href={`/portal/bills/${invoice.id}`}
+                          className="text-sm font-medium text-brand-700 hover:underline"
+                        >
+                          View receipt →
+                        </Link>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Card>
 
         <Card>
           <CardHeader

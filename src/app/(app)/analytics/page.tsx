@@ -2,12 +2,15 @@ import { requireSession } from "@/lib/auth";
 import { authorize } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
 import { Badge, Card, CardHeader, EmptyState, PageHeader } from "@/components/ui";
+import { PrintButton } from "@/components/print-button";
+import { PrintReportHeader } from "@/components/print-report-header";
 import { formatDateTime, fullName } from "@/lib/format";
 import { summariseWards, forecastOccupancy } from "@/lib/services/occupancy";
-import { scoreNoShowRisk } from "@/lib/services/noshow";
+import { scoreNoShowRisk, type NoShowRisk } from "@/lib/services/noshow";
 import { computeDiagnosisTrends } from "@/lib/services/population-health";
 
 const RISK_TONE = { low: "green" as const, medium: "amber" as const, high: "red" as const };
+const RISK_BAR = { low: "bg-sync-500", medium: "bg-amber-500", high: "bg-red-500" };
 const TREND_TONE = {
   up: "red" as const,
   new: "amber" as const,
@@ -15,6 +18,57 @@ const TREND_TONE = {
   flat: "neutral" as const,
 };
 const TREND_LABEL = { up: "↑ rising", new: "new", down: "↓ falling", flat: "stable" };
+
+function OccupancyBar({ label, percent, danger }: { label: string; percent: number; danger?: boolean }) {
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between text-xs">
+        <span className="font-medium text-ink-700">{label}</span>
+        <span className="text-ink-500">{percent}%</span>
+      </div>
+      <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100 print:border print:border-slate-200">
+        <div
+          className={`h-full rounded-full ${danger ? "bg-amber-500" : "bg-brand-600"}`}
+          style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function TrendBars({
+  currentCount,
+  priorCount,
+}: {
+  currentCount: number;
+  priorCount: number;
+}) {
+  const max = Math.max(currentCount, priorCount, 1);
+  return (
+    <div className="mt-2 space-y-1.5">
+      <div className="flex items-center gap-2">
+        <span className="w-10 shrink-0 text-[10px] uppercase text-ink-500">Now</span>
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100 print:border print:border-slate-200">
+          <div
+            className="h-full rounded-full bg-brand-600"
+            style={{ width: `${(currentCount / max) * 100}%` }}
+          />
+        </div>
+        <span className="w-5 shrink-0 text-right text-[10px] text-ink-500">{currentCount}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="w-10 shrink-0 text-[10px] uppercase text-ink-500">Prior</span>
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100 print:border print:border-slate-200">
+          <div
+            className="h-full rounded-full bg-slate-400"
+            style={{ width: `${(priorCount / max) * 100}%` }}
+          />
+        </div>
+        <span className="w-5 shrink-0 text-right text-[10px] text-ink-500">{priorCount}</span>
+      </div>
+    </div>
+  );
+}
 
 export default async function AnalyticsPage() {
   const session = await requireSession();
@@ -92,17 +146,29 @@ export default async function AnalyticsPage() {
   );
   risks.sort((a, b) => b.risk.score - a.risk.score);
 
+  const riskCounts = risks.reduce(
+    (acc, r) => {
+      acc[r.risk.band]++;
+      return acc;
+    },
+    { low: 0, medium: 0, high: 0 } as Record<NoShowRisk["band"], number>,
+  );
+  const totalRisks = risks.length || 1;
+
   const diagnosisTrends = computeDiagnosisTrends(currentPeriodRecords, priorPeriodRecords);
 
   return (
     <>
+      <PrintReportHeader title="Operational Analytics Report" generatedBy={session.fullName} />
+
       <PageHeader
         title="Operational analytics"
-        subtitle="Bed occupancy forecasting and appointment no-show risk — deterministic projections, not machine-learned predictions"
+        subtitle="Bed occupancy forecasting, no-show risk, and population health — deterministic projections, not machine-learned predictions"
+        action={<PrintButton />}
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
+        <Card className="print:break-inside-avoid">
           <CardHeader
             title="Bed occupancy forecast"
             subtitle={
@@ -148,29 +214,22 @@ export default async function AnalyticsPage() {
             </div>
           </div>
 
-          <div className="border-t border-slate-200 p-5">
-            <p className="mb-3 text-xs font-medium uppercase tracking-wide text-ink-500">
+          <div className="space-y-3 border-t border-slate-200 p-5">
+            <p className="text-xs font-medium uppercase tracking-wide text-ink-500">
               By ward
             </p>
-            <ul className="space-y-2">
-              {wardSummary.map((w) => (
-                <li key={w.ward} className="flex items-center justify-between text-sm">
-                  <span className="text-ink-700">{w.ward}</span>
-                  <span className="flex items-center gap-2">
-                    <span className="text-ink-500">
-                      {w.occupied}/{w.total - w.maintenance} occupied
-                    </span>
-                    <Badge tone={w.occupancyPercent > 85 ? "amber" : "neutral"}>
-                      {w.occupancyPercent}%
-                    </Badge>
-                  </span>
-                </li>
-              ))}
-            </ul>
+            {wardSummary.map((w) => (
+              <OccupancyBar
+                key={w.ward}
+                label={`${w.ward} (${w.occupied}/${w.total - w.maintenance})`}
+                percent={w.occupancyPercent}
+                danger={w.occupancyPercent > 85}
+              />
+            ))}
           </div>
         </Card>
 
-        <Card>
+        <Card className="print:break-inside-avoid">
           <CardHeader
             title="Appointment no-show risk"
             subtitle="Upcoming bookings, highest risk first"
@@ -178,39 +237,60 @@ export default async function AnalyticsPage() {
           {risks.length === 0 ? (
             <EmptyState message="No upcoming appointments to score." />
           ) : (
-            <ul className="divide-y divide-slate-100">
-              {risks.map(({ appointment, risk }) => (
-                <li key={appointment.id} className="p-5">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-ink-900">
-                        {fullName(appointment.patient)}
-                      </p>
-                      <p className="text-xs text-ink-500">
-                        {formatDateTime(appointment.startTime)} &middot;{" "}
-                        {appointment.doctor.fullName} &middot;{" "}
-                        {appointment.type.replace("_", " ")}
-                      </p>
-                    </div>
-                    <Badge tone={RISK_TONE[risk.band]}>
-                      {risk.score}% · {risk.band}
-                    </Badge>
-                  </div>
-                  <p className="mt-2 text-sm text-ink-700">
-                    <span className="font-medium text-ink-900">
-                      {risk.recommendedAction}
+            <>
+              <div className="p-5">
+                <div className="flex h-3 w-full overflow-hidden rounded-full bg-slate-100 print:border print:border-slate-200">
+                  {(["low", "medium", "high"] as const).map((band) => (
+                    <div
+                      key={band}
+                      className={RISK_BAR[band]}
+                      style={{ width: `${(riskCounts[band] / totalRisks) * 100}%` }}
+                    />
+                  ))}
+                </div>
+                <div className="mt-2 flex gap-4 text-xs text-ink-500">
+                  {(["low", "medium", "high"] as const).map((band) => (
+                    <span key={band} className="inline-flex items-center gap-1.5">
+                      <span className={`inline-block h-2 w-2 rounded-full ${RISK_BAR[band]}`} />
+                      {band} ({riskCounts[band]})
                     </span>
-                    {risk.reasons.length > 0 && (
-                      <span className="text-ink-500"> — {risk.reasons.join("; ")}</span>
-                    )}
-                  </p>
-                </li>
-              ))}
-            </ul>
+                  ))}
+                </div>
+              </div>
+              <ul className="max-h-96 divide-y divide-slate-100 overflow-y-auto border-t border-slate-200 print:max-h-none print:overflow-visible">
+                {risks.map(({ appointment, risk }) => (
+                  <li key={appointment.id} className="p-5 print:break-inside-avoid">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-ink-900">
+                          {fullName(appointment.patient)}
+                        </p>
+                        <p className="text-xs text-ink-500">
+                          {formatDateTime(appointment.startTime)} &middot;{" "}
+                          {appointment.doctor.fullName} &middot;{" "}
+                          {appointment.type.replace("_", " ")}
+                        </p>
+                      </div>
+                      <Badge tone={RISK_TONE[risk.band]}>
+                        {risk.score}% · {risk.band}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-sm text-ink-700">
+                      <span className="font-medium text-ink-900">
+                        {risk.recommendedAction}
+                      </span>
+                      {risk.reasons.length > 0 && (
+                        <span className="text-ink-500"> — {risk.reasons.join("; ")}</span>
+                      )}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </Card>
 
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2 print:break-inside-avoid">
           <CardHeader
             title="Population health trends"
             subtitle="Diagnoses recorded in the last 30 days vs. the 30 days before that"
@@ -218,22 +298,20 @@ export default async function AnalyticsPage() {
           {diagnosisTrends.length === 0 ? (
             <EmptyState message="No diagnosis data recorded yet." />
           ) : (
-            <ul className="divide-y divide-slate-100">
+            <div className="grid gap-x-8 gap-y-5 p-5 sm:grid-cols-2">
               {diagnosisTrends.map((t) => (
-                <li
-                  key={t.code}
-                  className="flex items-center justify-between gap-3 px-5 py-3 text-sm"
-                >
-                  <div>
-                    <p className="font-medium text-ink-900">{t.description}</p>
-                    <p className="text-xs text-ink-500">
-                      {t.code} &middot; {t.currentCount} this period vs. {t.priorCount} prior
-                    </p>
+                <div key={t.code} className="print:break-inside-avoid">
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <div>
+                      <p className="font-medium text-ink-900">{t.description}</p>
+                      <p className="text-xs text-ink-500">{t.code}</p>
+                    </div>
+                    <Badge tone={TREND_TONE[t.direction]}>{TREND_LABEL[t.direction]}</Badge>
                   </div>
-                  <Badge tone={TREND_TONE[t.direction]}>{TREND_LABEL[t.direction]}</Badge>
-                </li>
+                  <TrendBars currentCount={t.currentCount} priorCount={t.priorCount} />
+                </div>
               ))}
-            </ul>
+            </div>
           )}
         </Card>
       </div>
