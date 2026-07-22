@@ -25,6 +25,7 @@ export const PERMISSIONS = [
   "therapy:write",
   "lab:read",
   "lab:write",
+  "analytics:read",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -43,6 +44,7 @@ const MATRIX: Record<Role, Permission[]> = {
     "imaging:read",
     "therapy:read",
     "lab:read",
+    "analytics:read",
   ],
   doctor: [
     "patient:read",
@@ -102,6 +104,7 @@ const MATRIX: Record<Role, Permission[]> = {
     "appointment:write",
     "admission:write",
     "dashboard:view",
+    "analytics:read",
   ],
   billing: ["patient:read", "appointment:read", "dashboard:view"],
   patient: [],

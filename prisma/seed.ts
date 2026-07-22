@@ -305,6 +305,29 @@ async function main() {
     data: { status: "maintenance" },
   });
 
+  // Two already-discharged admissions purely to give the bed occupancy
+  // forecast (src/lib/services/occupancy.ts) real length-of-stay history.
+  await prisma.admission.create({
+    data: {
+      patientId: amina.id,
+      bedId: beds.find((b) => b.ward === "Medical Ward A" && b.id !== wardBed.id)!.id,
+      admittedAt: at(-12, 11, 0),
+      dischargedAt: at(-9, 9, 30),
+      reason: "Hypertensive urgency — for monitoring",
+      status: "discharged",
+    },
+  });
+  await prisma.admission.create({
+    data: {
+      patientId: tobi.id,
+      bedId: beds.find((b) => b.ward === "Surgical Ward B")!.id,
+      admittedAt: at(-20, 16, 0),
+      dischargedAt: at(-18, 10, 0),
+      reason: "Febrile illness — observation",
+      status: "discharged",
+    },
+  });
+
   // ---- Appointments --------------------------------------------------------
   const past = await prisma.appointment.create({
     data: {
@@ -364,6 +387,31 @@ async function main() {
       type: "consultation",
       reason: "Routine immunisation",
       cancelReason: "Guardian unavailable — rescheduling next week",
+    },
+  });
+
+  // Historical no-show/cancellation entries — feed the appointment no-show
+  // risk model (src/lib/services/noshow.ts) with real per-patient history.
+  await prisma.appointment.create({
+    data: {
+      patientId: zainab.id,
+      doctorId: drOkafor.id,
+      startTime: at(-16, 11, 0),
+      endTime: at(-16, 11, 30),
+      status: "no_show",
+      type: "follow_up",
+      reason: "Follow-up on abdominal pain",
+    },
+  });
+  await prisma.appointment.create({
+    data: {
+      patientId: zainab.id,
+      doctorId: drOkafor.id,
+      startTime: at(-30, 9, 0),
+      endTime: at(-30, 9, 30),
+      status: "completed",
+      type: "consultation",
+      reason: "Initial registration visit",
     },
   });
 
@@ -719,7 +767,7 @@ async function main() {
     },
   });
 
-  console.log(`Seeded: 10 users, 4 patients, ${beds.length} beds, 5 appointments, 3 dispensations, 3 imaging orders, 3 therapy sessions, 3 lab results.`);
+  console.log(`Seeded: 10 users, 4 patients, ${beds.length} beds, 7 appointments, 3 admissions, 3 dispensations, 3 imaging orders, 3 therapy sessions, 3 lab results.`);
   console.log(`All accounts use password: ${PASSWORD}`);
 }
 
