@@ -1,11 +1,9 @@
 import "server-only";
 import { cookies } from "next/headers";
+import { unauthorized } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
 import type { Role } from "./enums";
-import { AuthError } from "./errors";
-
-export { AuthError };
 
 const SESSION_COOKIE = "healthsync_session";
 const SESSION_MAX_AGE = 60 * 60 * 8; // 8 hours — one clinical shift.
@@ -80,9 +78,9 @@ export async function getSession(): Promise<SessionUser | null> {
   }
 }
 
-/** Returns the session or throws — for use in routes that require any login. */
+/** Returns the session, or interrupts with unauthorized.tsx — for routes that require any login. */
 export async function requireSession(): Promise<SessionUser> {
   const session = await getSession();
-  if (!session) throw new AuthError("Not authenticated", 401);
+  if (!session) unauthorized();
   return session;
 }

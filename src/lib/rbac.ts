@@ -1,6 +1,6 @@
+import { forbidden } from "next/navigation";
 import type { Role } from "./enums";
 import type { SessionUser } from "./auth";
-import { AuthError } from "./errors";
 
 export const PERMISSIONS = [
   "patient:read",
@@ -139,9 +139,6 @@ export function permissionsFor(role: Role): Permission[] {
 
 export function authorize(session: SessionUser, permission: Permission) {
   if (!can(session.role, permission)) {
-    throw new AuthError(
-      `Role "${session.role}" lacks permission "${permission}"`,
-      403,
-    );
+    forbidden();
   }
 }
