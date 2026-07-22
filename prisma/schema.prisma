@@ -36,6 +36,8 @@ model User {
   imagingRequests      ImagingOrder[]   @relation("RequestingDoctor")
   therapySessions      TherapySession[]
   labResultsOrdered    LabResult[]
+  invoicesCreated      Invoice[]
+  paymentsRecorded     Payment[]
 
   @@index([role])
   @@map("users")
@@ -76,6 +78,7 @@ model Patient {
   imagingOrders   ImagingOrder[]
   therapySessions TherapySession[]
   labResults      LabResult[]
+  invoices        Invoice[]
 
   @@index([lastName, firstName])
   @@index([phone])
@@ -98,7 +101,8 @@ model Appointment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  record MedicalRecord?
+  record  MedicalRecord?
+  invoice Invoice?
 
   // Double-booking is prevented by an overlap query in the booking service;
   // this index keeps that check fast.
@@ -270,6 +274,61 @@ model LabResult {
 
   @@index([patientId])
   @@map("lab_results")
+}
+
+model Invoice {
+  id            String       @id @default(uuid())
+  patientId     String
+  patient       Patient      @relation(fields: [patientId], references: [id])
+  createdById   String
+  createdBy     User         @relation(fields: [createdById], references: [id])
+  // Optional link to the appointment this invoice bills for — lets the
+  // revenue analytics service (src/lib/services/revenue.ts) find completed
+  // appointments with no corresponding invoice ("unbilled encounters").
+  appointmentId String?      @unique
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  // JSON: [{ description, quantity, unitPrice }] — total is derived, not stored per line.
+  items         String
+  total         Float
+  status        String       @default("unpaid") // unpaid | partial | paid | void
+  dueDate       DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  payments Payment[]
+
+  @@index([patientId])
+  @@index([status])
+  @@map("invoices")
+}
+
+model Payment {
+  id            String   @id @default(uuid())
+  invoiceId     String
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id])
+  amount        Float
+  method        String   // cash | card | transfer | insurance
+  reference     String?
+  recordedById  String
+  recordedBy    User     @relation(fields: [recordedById], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@index([invoiceId])
+  @@map("payments")
+}
+
+model DrugStock {
+  id               String    @id @default(uuid())
+  drugName         String    @unique
+  unit             String    // e.g. tablet, vial, bottle
+  quantityOnHand   Int
+  reorderThreshold Int
+  unitCost         Float?
+  expiryDate       DateTime?
+  updatedAt        DateTime  @updatedAt
+  createdAt        DateTime  @default(now())
+
+  @@map("drug_stock")
 }
 
 model AuditLog {

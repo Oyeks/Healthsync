@@ -78,3 +78,14 @@ export const THERAPY_SESSION_TYPE_LABELS: Record<string, string> = {
   follow_up: "Follow-up",
   discharge: "Discharge",
 };
+
+export const INVOICE_STATUSES = ["unpaid", "partial", "paid", "void"] as const;
+
+export const PAYMENT_METHODS = ["cash", "card", "transfer", "insurance"] as const;
+
+export const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: "Cash",
+  card: "Card",
+  transfer: "Bank Transfer",
+  insurance: "Insurance",
+};

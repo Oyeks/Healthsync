@@ -27,6 +27,10 @@ export const PERMISSIONS = [
   "lab:write",
   "analytics:read",
   "engagement:read",
+  "billing:read",
+  "billing:write",
+  "inventory:read",
+  "inventory:write",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -47,6 +51,8 @@ const MATRIX: Record<Role, Permission[]> = {
     "lab:read",
     "analytics:read",
     "engagement:read",
+    "billing:read",
+    "inventory:read",
   ],
   doctor: [
     "patient:read",
@@ -86,6 +92,8 @@ const MATRIX: Record<Role, Permission[]> = {
     "pharmacy:dispense",
     "dashboard:view",
     "lab:read",
+    "inventory:read",
+    "inventory:write",
   ],
   radiologist: [
     "patient:read",
@@ -111,7 +119,13 @@ const MATRIX: Record<Role, Permission[]> = {
     "analytics:read",
     "engagement:read",
   ],
-  billing: ["patient:read", "appointment:read", "dashboard:view"],
+  billing: [
+    "patient:read",
+    "appointment:read",
+    "dashboard:view",
+    "billing:read",
+    "billing:write",
+  ],
   patient: [],
 };
 
